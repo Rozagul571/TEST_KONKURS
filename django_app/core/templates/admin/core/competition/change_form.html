@@ -1,0 +1,11 @@
+<!-- django_app/core/templates/admin/core/competition/change_form.html -->
+{% extends "admin/change_form.html" %}
+
+{% block field_sets %}
+{{ block.super }}
+<style>
+  /* Custom fieldset dizayni */
+  .fieldset { border: 1px solid #4a90e2; border-radius: 8px; padding: 15px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+  .fieldset h2 { color: #4a90e2; }
+</style>
+{% endblock %}

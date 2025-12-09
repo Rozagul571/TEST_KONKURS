@@ -1,0 +1,10 @@
+<!-- django_app/core/templates/admin/core/competition/run_status.html -->
+{% if is_complete %}
+  {% if obj.status == 'active' %}
+  <span style="color: #0088cc; font-weight: bold;">🚀 Bot ishlamoqda</span>
+  {% else %}
+  <span style="color: green; font-weight: bold;">✅ Tayyor - Admin bilan bog'laning</span>
+  {% endif %}
+{% else %}
+<span style="color: orange; font-weight: bold;">⚠️ Maʼlumotlarni toʻldiring</span>
+{% endif %}

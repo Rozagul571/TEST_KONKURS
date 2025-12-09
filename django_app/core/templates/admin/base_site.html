@@ -1,0 +1,21 @@
+<!-- django_app/core/templates/admin/base_site.html -->
+{% extends "admin/base_site.html" %}
+{% load i18n static %}
+
+{% block extrastyle %}
+<link rel="stylesheet" type="text/css" href="{% static 'admin/css/custom.css' %}">
+<style>
+  /* Konkurs kayfiyati: Ranglar va 3D iconlar */
+  body { background: linear-gradient(to right, #f0f4ff, #e0eaff); font-family: 'Arial', sans-serif; }
+  #header { background: #4a90e2; color: white; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
+  .module h2 { background: #4a90e2; color: white; border-radius: 8px; padding: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+  .grp-module { background: white; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); transition: transform 0.3s; }
+  .grp-module:hover { transform: translateY(-5px); }
+
+  .icon-3d { font-size: 24px; text-shadow: 0 2px 4px rgba(0,0,0,0.2); }
+</style>
+{% endblock %}
+
+{% block branding %}
+<h1 id="site-name">🏆 {% trans 'Konkurs Platformasi' %}</h1>
+{% endblock %}

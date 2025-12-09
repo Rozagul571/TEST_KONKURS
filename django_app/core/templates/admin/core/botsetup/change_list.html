@@ -1,0 +1,8 @@
+<!-- django_app/core/templates/admin/core/botsetup/change_list.html -->
+{% extends "admin/change_list.html" %}
+{% block object-tools %}
+{{ block.super }}
+<style>
+  .object-tools a { background: #4a90e2; color: white; border-radius: 8px; padding: 8px 12px; }
+</style>
+{% endblock %}

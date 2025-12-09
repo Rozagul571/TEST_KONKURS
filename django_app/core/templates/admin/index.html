@@ -1,0 +1,27 @@
+<!-- django_app/core/templates/admin/index.html -->
+{% extends "admin/index.html" %}
+{% load i18n admin_urls static %}
+
+{% block content %}
+<div id="content-main">
+  <h2>📊 Dashboard</h2>
+  <div class="stats-grid">
+    <div class="stat-card">
+      <span class="icon-3d">🏆</span>
+      <h3>Jami Konkurslar</h3>
+      <p>{{ stats.total_competitions }}</p>
+    </div>
+    <!-- Boshqa stats cardlar shu tarzda -->
+  </div>
+  <div id="chart-container">
+    <!-- Chart.js orqali chartlar, data {{ chart_data }} dan olinadi -->
+  </div>
+  <h3>Top Konkurslar</h3>
+  <ul>
+    {% for comp in top_competitions %}
+    <li>{{ comp.name }} - {{ comp.participants_count }} ishtirokchi</li>
+    {% endfor %}
+  </ul>
+  <!-- Recent bot -->
+</div>
+{% endblock %}

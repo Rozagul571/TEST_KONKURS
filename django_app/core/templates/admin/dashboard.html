@@ -1,0 +1,197 @@
+<!-- templates/admin/index.html (Dashboard) -->
+{% extends "admin/base_site.html" %}
+{% load i18n static admin_tags %}
+
+{% block content %}
+<div class="dashboard">
+    <!-- Welcome Section -->
+    <div class="dashboard-card mb-6">
+        <h2 class="text-2xl font-bold text-gray-800 mb-2">
+            {% trans 'Xush kelibsiz' %}, {{ user.get_username }}! 👋
+        </h2>
+        <p class="text-gray-600">
+            Konkurs platformasi boshqaruv paneliga xush kelibsiz.
+            Bu yerdan barcha konkurslar, botlar va ishtirokchilarni boshqarishingiz mumkin.
+        </p>
+    </div>
+
+    <!-- Stats Grid -->
+    <div class="stats-grid mb-8">
+        <div class="dashboard-card">
+            <span class="stat-label">Umumiy Konkurslar</span>
+            <span class="stat-value">{{ stats.total_competitions }}</span>
+            <div class="mt-2 text-sm text-green-600">
+                ↑ {{ stats.active_competitions }} ta faol
+            </div>
+        </div>
+
+        <div class="dashboard-card">
+            <span class="stat-label">Ishlayotgan Botlar</span>
+            <span class="stat-value">{{ stats.running_bots }}</span>
+            <div class="mt-2 text-sm text-blue-600">
+                {{ stats.total_bots }} ta umumiy
+            </div>
+        </div>
+
+        <div class="dashboard-card">
+            <span class="stat-label">Ishtirokchilar</span>
+            <span class="stat-value">{{ stats.total_participants }}</span>
+            <div class="mt-2 text-sm text-purple-600">
+                Bugun: {{ stats.today_participants|default:"0" }}
+            </div>
+        </div>
+
+        <div class="dashboard-card">
+            <span class="stat-label">Foydalanuvchilar</span>
+            <span class="stat-value">{{ stats.total_users }}</span>
+            <div class="mt-2 text-sm text-orange-600">
+                {{ stats.premium_users|default:"0" }} ta premium
+            </div>
+        </div>
+    </div>
+
+    <!-- Charts -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+        <!-- Activity Chart -->
+        <div class="dashboard-card">
+            <h3 class="text-lg font-semibold mb-4 flex items-center">
+                <svg class="w-5 h-5 mr-2 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                          d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                </svg>
+                Aktivlik grafigi (7 kun)
+            </h3>
+            <canvas id="activityChart" height="200"></canvas>
+        </div>
+
+        <!-- Top Competitions -->
+        <div class="dashboard-card">
+            <h3 class="text-lg font-semibold mb-4 flex items-center">
+                <svg class="w-5 h-5 mr-2 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                          d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Eng faol konkurslar
+            </h3>
+            <div class="space-y-3">
+                {% for comp in top_competitions %}
+                <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                    <div>
+                        <a href="{% url 'admin:core_competition_change' comp.id %}"
+                           class="font-medium text-gray-800 hover:text-blue-600">
+                            {{ comp.name|truncatechars:30 }}
+                        </a>
+                        <div class="text-sm text-gray-500 mt-1">
+                            {{ comp.creator.full_name|default:"Noma'lum" }}
+                        </div>
+                    </div>
+                    <div class="text-right">
+                        <div class="font-bold text-gray-800">{{ comp.participants_count }} 👥</div>
+                        <div class="text-xs text-gray-500">ishtirokchi</div>
+                    </div>
+                </div>
+                {% empty %}
+                <div class="text-center py-8 text-gray-500">
+                    Konkurslar mavjud emas
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Recent Bots -->
+    <div class="dashboard-card">
+        <h3 class="text-lg font-semibold mb-4 flex items-center">
+            <svg class="w-5 h-5 mr-2 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                      d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+            </svg>
+            Oxirgi yaratilgan botlar
+        </h3>
+        <div class="overflow-x-auto">
+            <table class="table-modern">
+                <thead>
+                    <tr>
+                        <th>Bot</th>
+                        <th>Egasi</th>
+                        <th>Holati</th>
+                        <th>Yaratilgan sana</th>
+                        <th>Harakatlar</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for bot in recent_bots %}
+                    <tr>
+                        <td class="font-mono">@{{ bot.bot_username }}</td>
+                        <td>
+                            <div class="font-medium">{{ bot.owner.full_name|default:"Noma'lum" }}</div>
+                            <div class="text-xs text-gray-500">ID: {{ bot.owner.telegram_id }}</div>
+                        </td>
+                        <td>
+                            {% if bot.status == 'running' %}
+                                {% badge "success" "🟢 Ishlamoqda" %}
+                            {% elif bot.status == 'pending' %}
+                                {% badge "warning" "🟡 Kutilmoqda" %}
+                            {% else %}
+                                {% badge "secondary" bot.get_status_display %}
+                            {% endif %}
+                        </td>
+                        <td>{{ bot.created_at|date:"d.m.Y H:i" }}</td>
+                        <td>
+                            <div class="flex space-x-2">
+                                {% if bot.status == 'pending' %}
+                                    {% button "primary" "🚀 Run" url="admin:run-bot" args=bot.id %}
+                                {% elif bot.status == 'running' %}
+                                    {% button "danger" "⏹ Stop" url="admin:stop-bot" args=bot.id %}
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="5" class="text-center py-8 text-gray-500">
+                            Botlar mavjud emas
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Activity Chart
+    const ctx = document.getElementById('activityChart').getContext('2d');
+    new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: {{ chart_labels|safe }},
+            datasets: [{
+                label: 'Konkurslar',
+                data: {{ competitions_data|safe }},
+                borderColor: '#4F46E5',
+                backgroundColor: 'rgba(79, 70, 229, 0.1)',
+                tension: 0.4
+            }, {
+                label: 'Ishtirokchilar',
+                data: {{ participants_data|safe }},
+                borderColor: '#10B981',
+                backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                tension: 0.4
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: {
+                    position: 'top',
+                }
+            }
+        }
+    });
+});
+</script>
+{% endblock %}

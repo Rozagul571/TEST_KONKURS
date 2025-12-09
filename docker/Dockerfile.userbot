@@ -1,0 +1,27 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Tizim kutubxonalari
+RUN apt-get update && apt-get install -y \
+    gcc \
+    g++ \
+    postgresql-client \
+    && rm -rf /var/lib/apt/lists/*
+
+# Python kutubxonalari
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Kodni nusxalash
+COPY . .
+
+# Environment variables
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
+
+# Ishga tushirish skripti
+COPY start_bot.sh .
+RUN chmod +x start_bot.sh
+
+CMD ["./start_bot.sh"]

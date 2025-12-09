@@ -1,0 +1,67 @@
+#version: '3.8'
+#
+#services:
+#  # Postgres database
+#  postgres:
+#    image: postgres:15
+#    environment:
+#      POSTGRES_DB: konkurs
+#      POSTGRES_USER: konkurs_user
+#      POSTGRES_PASSWORD: konkurs_password
+#    ports:
+#      - "5432:5432"
+#    volumes:
+#      - postgres_data:/var/lib/postgresql/data
+#
+#  # Redis
+#  redis:
+#    image: redis:7-alpine
+#    ports:
+#      - "6379:6379"
+#
+#  # Django
+#  django:
+#    build:
+#      context: .
+#      dockerfile: Dockerfile.django
+#    command: >
+#      sh -c "python manage.py migrate &&
+#             python manage.py runserver 0.0.0.0:8000"
+#    volumes:
+#      - .:/app
+#    ports:
+#      - "8000:8000"
+#    environment:
+#      DATABASE_URL: postgresql://konkurs_user:konkurs_password@postgres:5432/konkurs
+#      REDIS_URL: redis://redis:6379/0
+#    depends_on:
+#      - postgres
+#      - redis
+#
+#  # FastAPI
+#  fastapi:
+#    build:
+#      context: .
+#      dockerfile: Dockerfile.fastapi
+#    command: uvicorn fastapi_app.main:app --host 0.0.0.0 --port 8001 --reload
+#    volumes:
+#      - .:/app
+#    ports:
+#      - "8001:8001"
+#    environment:
+#      DATABASE_URL: postgresql://konkurs_user:konkurs_password@postgres:5432/konkurs
+#      REDIS_URL: redis://redis:6379/0
+#      WEBHOOK_URL: https://novelettish-madilyn-fungitoxic.ngrok-free.dev
+#    depends_on:
+#      - postgres
+#      - redis
+#
+#  # User bot image build
+#  user_bot_builder:
+#    build:
+#      context: ./bots/user_bots
+#      dockerfile: Dockerfile.user_bot
+#    image: user_bot:latest
+#
+#volumes:
+#  postgres_data:

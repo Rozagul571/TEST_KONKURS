@@ -1,0 +1,6 @@
+<!-- django_app/core/templates/admin/core/competition/completion_status.html -->
+{% if is_complete %}
+<span style="color: green;">✅ To'liq</span>
+{% else %}
+<span style="color: orange;">⚠️ To'ldirilmagan: {{ missing }}</span>
+{% endif %}

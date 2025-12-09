@@ -1,0 +1,30 @@
+<!-- django_app/core/templates/admin/login.html -->
+{% extends "admin/login.html" %}
+{% load i18n static %}
+
+{% block extrastyle %}
+<style>
+  /* Custom login dizayni: Konkurs kayfiyati bilan */
+  body.login { background: url('{% static "admin/img/background.jpg" %}') no-repeat center center fixed; background-size: cover; }
+  #login-form { background: rgba(255,255,255,0.9); border-radius: 15px; padding: 20px; box-shadow: 0 8px 16px rgba(0,0,0,0.2); }
+  input[type="text"], input[type="password"] { border: 1px solid #4a90e2; border-radius: 8px; padding: 10px; }
+  .submit-row input { background: #4a90e2; color: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+  .submit-row input:hover { transform: scale(1.05); }
+  h1 { color: #4a90e2; text-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div id="content" class="{% block coltype %}colMS{% endblock %}">
+  <h1>🏆 Kirish</h1>
+  {% if form.errors and not form.non_field_errors %}
+  <p class="errornote">❌ Login yoki parol noto'g'ri!</p>
+  {% endif %}
+  <form action="{{ app_path }}" method="post" id="login-form">
+    {{ form.as_p }}
+    <div class="submit-row">
+      <input type="submit" value="{% trans 'Kirish' %}">
+    </div>
+  </form>
+</div>
+{% endblock %}
