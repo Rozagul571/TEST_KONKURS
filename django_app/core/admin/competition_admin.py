@@ -160,15 +160,21 @@ class CompetitionAdmin(admin.ModelAdmin):
 
     def send_completion_notification(self, competition):
         try:
-            fastapi_url = os.getenv('FASTAPI_URL', 'http://localhost:8001')
+            fastapi_url = os.getenv('FASTAPI_URL', 'http://127.0.0.1:8001')
             payload = {
                 "user_tg_id": competition.creator.telegram_id,
                 "competition_name": competition.name,
-                "description": competition.description or "Tavsif yo'q"
+                "description": competition.description or "Tavsif yo‘q"
             }
-            response = requests.post(f"{fastapi_url}/api/webhooks/handle-user-completed", json=payload, timeout=10)
+            response = requests.post(
+                f"{fastapi_url}/api/webhooks/handle-user-completed",
+                json=payload,  # <--- json= qo‘shildi (bu juda muhim!)
+                timeout=10
+            )
+            # logger.info(f"FastAPI javobi: {response.status_code}")
             return response.status_code == 200
-        except Exception:
+        except Exception as e:
+            # logger.error(f"Notification xato: {e}")
             return False
 
     def has_add_permission(self, request):

@@ -2,43 +2,49 @@
 from asgiref.sync import sync_to_async
 import secrets
 import string
-from django_app.core.models.user import User
-from django_app.core.models.participant import Participant
-from django_app.core.models.competition import Competition
-from django_app.core.models.referral import Referral
+
+from pydantic import json
+
+from django_app.core.models import User, Participant, Competition, Referral
+from fastapi_app.cache import redis
 
 class UserService:
-    """User servisi. Vazifasi: User va participant yaratish. Misol: get_or_create_participant - referral code beradi."""
-    @sync_to_async
-    def get_or_create_user(self, user_data: dict):
-        user, created = User.objects.get_or_create(
+    """
+    Purpose: Manages user/participant data and referrals.
+    What it does: Creates users/participants, generates referral codes, handles anti-cheat.
+    Why: Supports participant onboarding and referral system, TZ Step 3.
+    """
+    async def get_or_create_user(self, user_data: dict):
+        """Creates or updates a user in the DB."""
+        user, created = await sync_to_async(User.objects.get_or_create)(
             telegram_id=user_data['telegram_id'],
             defaults={
                 "username": user_data['username'],
-                "full_name": user_data['first_name'] or "",
+                "full_name": user_data['full_name'] or "",
                 "is_premium": user_data.get('is_premium', False)
             }
         )
         if not created:
             user.username = user_data['username']
-            user.full_name = user_data['first_name'] or ""
+            user.full_name = user_data['full_name'] or ""
             user.is_premium = user_data.get('is_premium', False)
-            user.save()
+            await sync_to_async(user.save)()
         return user
 
-    async def get_or_create_user_from_message(self, message, competition: dict):
+    async def get_or_create_user_from_message(self, message: dict, competition_id: int):
+        """Extracts user data from message and creates user."""
         user_data = {
-            'telegram_id': message.from_user.id,
-            'username': message.from_user.username,
-            'first_name': message.from_user.first_name,
-            'is_premium': getattr(message.from_user, 'is_premium', False)
+            'telegram_id': message['from']['id'],
+            'username': message['from']['username'] or "",
+            'full_name': message['from']['first_name'] or "",
+            'is_premium': message['from'].get('is_premium', False)
         }
         return await self.get_or_create_user(user_data)
 
-    @sync_to_async
-    def get_or_create_participant(self, user, competition_data):
-        competition = Competition.objects.get(id=competition_data['id'])
-        participant, created = Participant.objects.get_or_create(
+    async def get_or_create_participant(self, user, competition_id):
+        """Creates or gets a participant with a unique referral code."""
+        competition = await sync_to_async(Competition.objects.get)(id=competition_id)
+        participant, created = await sync_to_async(Participant.objects.get_or_create)(
             user=user,
             competition=competition,
             defaults={'referral_code': self.generate_referral_code()}
@@ -46,19 +52,39 @@ class UserService:
         return participant
 
     def generate_referral_code(self, length=8):
-        alphabet = string.ascii_letters + string.digits
-        return ''.join(secrets.choice(alphabet) for _ in range(length))
+        """Generates a unique referral code."""
+        return ''.join(secrets.choice(string.ascii_letters + string.digits) for _ in range(length))
 
-    @sync_to_async
-    def check_referral(self, referral_code: str, competition_data):
-        return Participant.objects.filter(referral_code=referral_code, competition_id=competition_data['id']).first()
+    async def save_referral(self, bot_id: int, user_id: int, ref_code: str):
+        """Saves a referral to Redis for batch processing."""
+        referrer = await self.get_participant_by_code(ref_code, bot_id)
+        if referrer:
+            referral_data = {
+                'referrer': referrer.user.id,
+                'referred': user_id,
+                'competition': bot_id
+            }
+            await redis.lpush(f"referrals:{bot_id}", json.dumps(referral_data))
 
-    @sync_to_async
-    def create_referral(self, referrer, referred, competition_data):
-        competition = Competition.objects.get(id=competition_data['id'])
-        referral, created = Referral.objects.get_or_create(
-            referrer=referrer.user,
-            referred=referred.user,
-            competition=competition
+    async def get_participant_by_code(self, code: str, bot_id: int):
+        """Fetches a participant by referral code."""
+        return await sync_to_async(Participant.objects.get)(
+            referral_code=code, competition_id=bot_id
         )
-        return referral
+
+    async def get_referral_code(self, user_id: int):
+        """Gets or generates a unique referral code for a user."""
+        code = await redis.get(f"user_referral:{user_id}")
+        if code:
+            return code.decode()
+        code = self.generate_referral_code()
+        await redis.set(f"user_referral:{user_id}", code)
+        return code
+
+    async def anti_cheat_rate_limit(self, bot_id: int, user_id: int, action: str, limit_sec: int = 5):
+        """Implements rate limiting to prevent abuse."""
+        key = f"limit:{bot_id}:{user_id}:{action}"
+        if await redis.exists(key):
+            return True  # Rate limit hit
+        await redis.set(key, 1, ex=limit_sec)
+        return False

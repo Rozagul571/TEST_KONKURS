@@ -7,10 +7,13 @@ run-bot:
 runserver:
 	python manage.py runserver 8000
 
-run fastapi:
+fastapi:
 	uvicorn fastapi_app.main:app --reload --host 0.0.0.0 --port 8001
+redis:
+	redis-server
 
-#run-user:
+run-celery:
+	celery -A celery_worker worker -l info
 
 unicorn:
 	uvicorn fastapi_app.main:app --reload --host 0.0.0.0 --port 8001

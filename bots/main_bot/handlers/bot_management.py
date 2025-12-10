@@ -1,53 +1,55 @@
 from aiogram import Router, F
 from aiogram.types import CallbackQuery
-from asgiref.sync import sync_to_async
-from django_app.core.models.bot import BotSetUp, BotStatus
-from django_app.core.models.competition import Competition, CompetitionStatus
 import httpx
 import os
-from aiogram import Bot
 import logging
 
 logger = logging.getLogger(__name__)
 router = Router()
-FASTAPI_URL = os.getenv("FASTAPI_URL", "http://localhost:8001")
+FASTAPI_URL = os.getenv("FASTAPI_URL", "http://127.0.0.1:8001")
 
 
 @router.callback_query(F.data.startswith("run_bot:"))
 async def run_bot_handler(callback: CallbackQuery):
     bot_id = int(callback.data.split(":")[1])
-    bot = await sync_to_async(BotSetUp.objects.select_related('owner').get)(id=bot_id, is_active=True,
-                                                                            status=BotStatus.PENDING)
-    if not bot:
-        await callback.bot.answer_callback_query(callback.id, text="❌ Bot topilmadi!", show_alert=True)
-        return
+
     try:
-        async with httpx.AsyncClient() as client:
-            response = await client.post(f"{FASTAPI_URL}/api/bots/run/{bot_id}")
-        if response.status_code == 200:
-            bot.status = BotStatus.RUNNING
-            await sync_to_async(bot.save)()
-            competition = await sync_to_async(Competition.objects.get)(bot=bot)
-            competition.status = CompetitionStatus.ACTIVE
-            await sync_to_async(competition.save)()
+        await callback.answer("Bot ishga tushirilmoqda...", show_alert=False)
+
+        async with httpx.AsyncClient(timeout=30.0) as client:  # FIX: Timeout qo'shildi
+            r = await client.post(f"{FASTAPI_URL}/api/bots/run/{bot_id}")
+
+        if r.status_code == 200:
+            result = r.json()
             await callback.message.edit_text(
-                f"✅ <b>Bot ishga tushirildi!</b>\n\n"
-                f"🤖 <b>Bot:</b> @{bot.bot_username}\n"
-                f"👤 <b>Admin:</b> {bot.owner.full_name}\n"
-                f"🔄 <b>Status:</b> Running",
+                f"✅ <b>Bot ishga tushdi!</b>\n\n"
+                f"🤖 Bot: @{result.get('bot_username', 'Noma\'lum')}\n"
+                f"🆔 ID: {bot_id}\n"
+                f"🔗 Link: https://t.me/{result.get('bot_username', '')}\n\n"
+                f"📊 Endi ishtirokchilar qatnasha boshlaydi!",
                 parse_mode="HTML"
             )
-            await callback.bot.answer_callback_query(callback.id, text="✅ Bot ishga tushirildi!", show_alert=True)
-            # User ga xabar
-            main_bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
-            main_bot = Bot(token=main_bot_token)
-            await main_bot.send_message(
-                bot.owner.telegram_id,
-                f"🏁 Bot @{bot.bot_username} ishga tushdi! Endi participantlar kirishi mumkin."
-            )
-            await main_bot.session.close()
+            await callback.answer("Muvaffaqiyatli ishga tushdi!", show_alert=True)
         else:
-            await callback.bot.answer_callback_query(callback.id, text="❌ FastAPI dan xato!", show_alert=True)
+            error_detail = "Noma'lum xato"
+            try:
+                error_data = r.json()
+                error_detail = error_data.get('detail', error_detail)
+            except:
+                error_detail = f"HTTP {r.status_code}"
+
+            await callback.message.answer(
+                f"❌ Botni ishga tushirishda xato!\n\n"
+                f"🆔 Bot ID: {bot_id}\n"
+                f"📋 Xato: {error_detail}\n\n"
+                f"Iltimos, token va sozlamalarni tekshiring."
+            )
+            await callback.answer("Xato yuz berdi!", show_alert=True)
+
+    except httpx.TimeoutException:
+        await callback.message.answer("⏳ Server javob bermadi. Iltimos, keyinroq urinib ko'ring.")
+        await callback.answer("Timeout xatosi!", show_alert=True)
     except Exception as e:
-        logger.error(f"Run handler xato: {str(e)}")
-        await callback.bot.answer_callback_query(callback.id, text="❌ Xatolik!", show_alert=True)
+        logger.error(f"Run xatosi: {e}", exc_info=True)
+        await callback.message.answer(f"❌ Xatolik: {str(e)[:100]}")
+        await callback.answer("Xatolik!", show_alert=True)

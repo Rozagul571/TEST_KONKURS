@@ -1,7 +1,7 @@
 import os
 
 import redis
-r = redis.Redis.from_url(os.getenv('REDIS_URL'))
+r = redis.Redis.from_url(os.getenv('REDIS_HOST'), decode_responses=True)
 
 def preload_bot_settings(bot_id, settings):
     r.set(f"bot:{bot_id}:settings", settings)

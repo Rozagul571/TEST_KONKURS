@@ -1,5 +1,10 @@
 from pydantic import BaseModel
 
+class UserCompletedPayload(BaseModel):
+    user_tg_id: int
+    competition_name: str
+    description: str
+
 class RunBotRequest(BaseModel):
     token: str
     username: str
