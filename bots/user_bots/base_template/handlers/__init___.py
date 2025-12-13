@@ -1,5 +1,13 @@
-from .start import router as start_router
-from .channels import router as channels_router
-from .main_menu import router as main_menu_router
+from .start import start_handler
+from .channels import check_subscription, check_channels
+from .main_menu import prizes_handler, points_handler, rating_handler, rules_handler
 
-__all__ = ['start_router', 'channels_router', 'main_menu_router']
+__all__ = [
+    'start_handler',
+    'check_subscription',
+    'check_channels',
+    'prizes_handler',
+    'points_handler',
+    'rating_handler',
+    'rules_handler'
+]

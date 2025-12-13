@@ -5,6 +5,9 @@ from .prize_service import PrizeService
 from .rating_service import RatingService
 
 __all__ = [
-    'UserService', 'ChannelService', 'PointService',
-    'PrizeService', 'RatingService'
+    'UserService',
+    'ChannelService',
+    'PointService',
+    'PrizeService',
+    'RatingService'
 ]

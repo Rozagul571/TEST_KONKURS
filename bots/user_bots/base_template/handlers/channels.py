@@ -1,6 +1,5 @@
 # bots/user_bots/base_template/handlers/channels.py
 from aiogram import Bot
-
 from django_app.core.services.point_calculator import PointCalculator
 from fastapi_app.cache import get_bot_settings
 from bots.user_bots.base_template.services import UserService

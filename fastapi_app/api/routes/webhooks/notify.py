@@ -1,3 +1,4 @@
+# fastapi_app/api/routes/webhooks/notify.py
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from aiogram import Bot
@@ -18,9 +19,9 @@ class NotificationPayload(BaseModel):
 
 @router.post("/handle-user-completed")
 async def handle_user_completed(payload: NotificationPayload):
-    """Admin paneldan SAVE bosilganda ishlaydi. Userga notification yuboradi."""
     try:
-        bot_username = await get_bot_username_async(payload.user_tg_id)
+        # FIX: Bot topish – order_by bilan
+        bot_username = await sync_to_async(get_bot_username)(payload.user_tg_id)
         text = get_competition_complete_message(bot_username, payload.competition_name, payload.description)
         keyboard = await get_contact_admin_keyboard()
         bot = Bot(token=os.getenv("TELEGRAM_BOT_TOKEN"))
@@ -32,6 +33,9 @@ async def handle_user_completed(payload: NotificationPayload):
         logger.error(f"Notification xatosi: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
+# def get_bot_username(user_tg_id):
+#     bot = BotSetUp.objects.filter(owner__telegram_id=user_tg_id, is_active=True).order_by('-created_at').first()
+#     return bot.bot_username if bot else "topilmadi"
 # FIX: Yangi async funksiya
 @sync_to_async
 def get_bot_username_async(user_tg_id):

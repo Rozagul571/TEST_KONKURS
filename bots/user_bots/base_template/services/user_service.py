@@ -6,7 +6,7 @@ import string
 from pydantic import json
 
 from django_app.core.models import User, Participant, Competition, Referral
-from fastapi_app.cache import redis
+from fastapi_app.cache import redis_client as redis
 
 class UserService:
     """
