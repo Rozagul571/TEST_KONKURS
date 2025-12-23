@@ -1,3 +1,4 @@
+#django_app/core/admin/competition_admin.py
 from django.contrib import admin
 from django.http import HttpRequest
 from django.contrib import messages
@@ -9,8 +10,7 @@ from ..models.pointrule import PointRule
 from ..models.prize import Prize
 from ..models.user import User
 from ..models.bot import BotSetUp, BotStatus
-from bots.main_bot.services.notification_service import NotificationService  # O'ZGARTIRILGAN: Import
-from bots.main_bot.utils.message_texts import get_superadmin_notification_message
+from bots.main_bot.services.notification_service import NotificationService
 from bots.main_bot.buttons.inline import get_bot_management_keyboard
 from aiogram import Bot
 from asgiref.sync import async_to_sync
@@ -66,8 +66,10 @@ class CompetitionAdmin(admin.ModelAdmin):
         return obj.bot.bot_username if obj.bot else "-"
     bot_username.short_description = "Bot Username"
 
-    def creator_display(self, obj):  # O'ZGARTIRILGAN: full_name
-        return obj.creator.full_name if obj.creator else "-"
+    def creator_display(self, obj):
+        if obj.creator:
+            return f"{obj.creator.first_name or ''} {obj.creator.last_name or ''}".strip() or "Noma'lum"
+        return "-"
     creator_display.short_description = "Egasi"
 
     def completion_status(self, obj):
@@ -124,15 +126,13 @@ class CompetitionAdmin(admin.ModelAdmin):
                 async_to_sync(self.send_superadmin_complete_notification)(obj)
 
     async def send_superadmin_complete_notification(self, competition):
-        """O'ZGARTIRILGAN: Bot_id bilan notification, format saqlanadi."""
         user = competition.creator
         bot_username = competition.bot.bot_username if competition.bot else "Noma'lum"
-        admin_username = f"admin_{user.telegram_id}"  # Avto
+        admin_username = f"admin_{user.telegram_id}"
         bot_id = competition.bot.id if competition.bot else 0
-        text = get_superadmin_notification_message(user, bot_username, admin_username)
-        keyboard = get_bot_management_keyboard(bot_id)
-        notification_service = NotificationService()
-        await notification_service.send_superadmin_notification(user, bot_username, admin_username, bot_id)  # O'ZGARTIRILGAN: Service orqali
+
+        service = NotificationService()
+        await service.send_superadmin_new_bot(user, bot_username, admin_username, bot_id)
 
     def is_complete(self, obj):
         return all([

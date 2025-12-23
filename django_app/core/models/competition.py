@@ -1,3 +1,4 @@
+#django_app/core/models/competition.py
 from django.db import models
 from django.utils import timezone
 from django.core.exceptions import ValidationError

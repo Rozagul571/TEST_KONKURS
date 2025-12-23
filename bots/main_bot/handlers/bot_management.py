@@ -1,3 +1,4 @@
+#bots/main_bot/handlers/bot_management.py
 from aiogram import Router, F
 from aiogram.types import CallbackQuery
 import httpx

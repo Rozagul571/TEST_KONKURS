@@ -1,3 +1,4 @@
+# fastapi_app/api/schemas/bot_schemas.py:
 from pydantic import BaseModel
 
 class UserCompletedPayload(BaseModel):

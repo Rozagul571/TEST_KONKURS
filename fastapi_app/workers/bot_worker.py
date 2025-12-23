@@ -1,11 +1,15 @@
+#fastapi_app/workers/bot_worker.py
+"""
+High-performance bot worker with async processing - TO'G'RILANGAN
+"""
 import asyncio
 import logging
-import json
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from aiogram import Bot
 from cryptography.fernet import Fernet
 import os
 
+from bots.user_bots.base_template.handlers.menu_handler import MenuHandlers
 from shared.redis_client import redis_client
 from asgiref.sync import sync_to_async
 from django_app.core.models import BotSetUp
@@ -14,261 +18,247 @@ logger = logging.getLogger(__name__)
 
 
 class BotWorker:
-    """Soddalashtirilgan bot worker"""
+    """High-performance bot worker with async processing"""
 
     def __init__(self, bot_id: int):
         self.bot_id = bot_id
         self.running = False
-        self.bot_instance = None
+        self.bot = None
+        self.token = None
+        self.handlers = {}
 
     async def start(self):
-        """Worker ni ishga tushirish"""
-        self.running = True
-
-        # Bot tokenini olish
+        """Start worker"""
         try:
-            bot_setup = await sync_to_async(BotSetUp.objects.get)(id=self.bot_id)
+            self.running = True
 
-            # Token decrypt
-            fernet = Fernet(os.getenv("FERNET_KEY").encode())
-            token = fernet.decrypt(bot_setup.encrypted_token.encode()).decode()
+            # Get bot token
+            self.token = await self._get_bot_token()
+            if not self.token:
+                logger.error(f"❌ Failed to get token for bot {self.bot_id}")
+                self.running = False
+                return
 
-            # Bot yaratish
-            self.bot_instance = Bot(token=token)
+            # Initialize bot
+            self.bot = Bot(token=self.token)
 
-            # Test
-            me = await self.bot_instance.get_me()
-            logger.info(f"✅ Bot worker ready: @{me.username}")
+            # Test connection
+            me = await self.bot.get_me()
+            logger.info(f"✅ Bot worker started: @{me.username} (ID: {self.bot_id})")
 
-            # Ish loop
-            asyncio.create_task(self.process_loop())
+            # Initialize handlers
+            await self._initialize_handlers()
+
+            # Start processing loop
+            asyncio.create_task(self._processing_loop())
 
         except Exception as e:
-            logger.error(f"Start worker error: {e}")
+            logger.error(f"❌ Start worker error: {e}", exc_info=True)
+            self.running = False
 
-    async def process_loop(self):
-        """Asosiy processing loop"""
+    async def _get_bot_token(self) -> Optional[str]:
+        """Get bot token from database"""
+        try:
+            @sync_to_async
+            def _get_token():
+                try:
+                    bot = BotSetUp.objects.get(id=self.bot_id, is_active=True)
+
+                    # Decrypt token
+                    fernet = Fernet(os.getenv("FERNET_KEY").encode())
+                    return fernet.decrypt(bot.encrypted_token.encode()).decode()
+
+                except BotSetUp.DoesNotExist:
+                    logger.error(f"Bot {self.bot_id} not found or not active")
+                    return None
+                except Exception as e:
+                    logger.error(f"Token decrypt error: {e}")
+                    return None
+
+            return await _get_token()
+
+        except Exception as e:
+            logger.error(f"Get bot token error: {e}")
+            return None
+
+    async def _initialize_handlers(self):
+        """Initialize all handlers"""
+        try:
+            from bots.user_bots.base_template.handlers.start_handler import StartHandler
+            from bots.user_bots.base_template.handlers.channel_handler import ChannelHandler
+
+            self.handlers['start'] = StartHandler(self.bot_id)
+            self.handlers['menu'] = MenuHandlers(self.bot_id)
+            self.handlers['channel'] = ChannelHandler(self.bot_id)
+
+            logger.info(f"✅ Handlers initialized for bot {self.bot_id}")
+        except Exception as e:
+            logger.error(f"Initialize handlers error: {e}")
+
+    async def _processing_loop(self):
+        """Main processing loop"""
         while self.running:
             try:
-                # Queue dan update olish
-                if redis_client.is_connected():
-                    update = redis_client.pop_update(self.bot_id)
+                # Get update from queue
+                update = await redis_client.pop_update(self.bot_id)
 
-                    if update:
-                        await self.process_update(update)
-                    else:
-                        # Update bo'lmasa, biroz kutish
-                        await asyncio.sleep(0.1)
+                if update:
+                    await self._process_update(update)
                 else:
-                    await asyncio.sleep(1)
+                    # No updates, sleep a bit
+                    await asyncio.sleep(0.1)
 
             except Exception as e:
-                logger.error(f"Process loop error: {e}")
+                logger.error(f"Processing loop error: {e}")
                 await asyncio.sleep(1)
 
-    async def process_update(self, update: Dict[str, Any]):
-        """Update ni qayta ishlash"""
+    async def _process_update(self, update: Dict[str, Any]):
+        """Process single update"""
         try:
-            # Bot settings
-            settings = redis_client.get_bot_settings(self.bot_id)
+            # Get bot settings from cache
+            from bots.user_bots.base_template.services.competition_service import CompetitionService
+            comp_service = CompetitionService()
+            settings = await comp_service.get_competition_settings(self.bot_id)
+
             if not settings:
                 logger.warning(f"No settings for bot {self.bot_id}")
                 return
 
-            # Message borligini tekshirish
-            if "message" in update and "text" in update["message"]:
-                text = update["message"]["text"]
-                user_id = update["message"]["from"]["id"]
-
-                # /start handler
-                if text.startswith("/start"):
-                    await self.handle_start(update["message"], settings, user_id)
-
-                # Menu handlerlar
-                elif text == "🎁 Sovg'alar":
-                    await self.handle_prizes(user_id, settings)
-                elif text == "📊 Ballarim":
-                    await self.handle_points(user_id, settings)
-                elif text == "🏆 Reyting":
-                    await self.handle_rating(user_id, settings)
-                elif text == "📜 Shartlar":
-                    await self.handle_rules(user_id, settings)
-
-            # Callback query
+            # Process based on update type
+            if "message" in update:
+                await self._process_message(update["message"], settings)
             elif "callback_query" in update:
-                callback = update["callback_query"]
-                if callback.get("data") == "check_subscription":
-                    await self.handle_check_subscription(callback, settings)
+                await self._process_callback(update["callback_query"], settings)
 
         except Exception as e:
-            logger.error(f"Process update error: {e}")
+            logger.error(f"Process update error: {e}", exc_info=True)
 
-    async def handle_start(self, message: Dict, settings: Dict, user_id: int):
-        """/start handler"""
+    async def _process_message(self, message: Dict[str, Any], settings: Dict[str, Any]):
+        """Process message update"""
         try:
-            welcome_text = (
-                f"🎉 *Xush kelibsiz!*\n\n"
-                f"🏆 *Konkurs:* {settings.get('name', '')}\n"
-                f"📝 *Tavsif:* {settings.get('description', '')[:100]}...\n\n"
-                f"✅ *Ro'yxatdan o'tdingiz!*\n\n"
-                f"👇 Quyidagi menyu orqali ishtirok eting:"
-            )
+            text = message.get("text", "").strip()
+            user_id = message["from"]["id"]
 
-            # Menu keyboard
-            from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
+            # /start command
+            if text.startswith("/start"):
+                if 'start' in self.handlers:
+                    await self.handlers['start'].handle_start(message, self.bot)
+                return
 
-            keyboard = ReplyKeyboardMarkup(
-                keyboard=[
-                    [KeyboardButton(text="🎁 Sovg'alar"), KeyboardButton(text="📊 Ballarim")],
-                    [KeyboardButton(text="🏆 Reyting"), KeyboardButton(text="📜 Shartlar")]
-                ],
-                resize_keyboard=True
-            )
-
-            await self.bot_instance.send_message(
-                chat_id=user_id,
-                text=welcome_text,
-                reply_markup=keyboard,
-                parse_mode="Markdown"
-            )
-
-            logger.info(f"Start handled for user {user_id}")
+            # Menu commands
+            if text == "🚀 Konkursda qatnashish":
+                if 'menu' in self.handlers:
+                    await self.handlers['menu'].handle_konkurs_qatnashish(message, self.bot)
+            elif text == "🎁 Sovg'alar":
+                if 'menu' in self.handlers:
+                    await self.handlers['menu'].handle_sovgalar(message, self.bot)
+            elif text == "📊 Ballarim":
+                if 'menu' in self.handlers:
+                    await self.handlers['menu'].handle_ballarim(message, self.bot)
+            elif text == "🏆 Reyting":
+                if 'menu' in self.handlers:
+                    await self.handlers['menu'].handle_reyting(message, self.bot)
+            elif text == "📜 Shartlar":
+                if 'menu' in self.handlers:
+                    await self.handlers['menu'].handle_shartlar(message, self.bot)
 
         except Exception as e:
-            logger.error(f"Handle start error: {e}")
+            logger.error(f"Process message error: {e}")
 
-    async def handle_prizes(self, user_id: int, settings: Dict):
-        """Sovg'alar handler"""
+    async def _process_callback(self, callback: Dict[str, Any], settings: Dict[str, Any]):
+        """Process callback query"""
         try:
-            prizes_text = "🎁 *Sovg'alar:*\n\n"
-
-            for prize in settings.get('prizes', [])[:5]:  # Faqat 5 ta
-                prizes_text += f"{prize.get('place', '')}-o'rin: {prize.get('prize_name', '')}\n"
-
-            # Referral link
-            referral_link = f"https://t.me/{settings.get('bot_username', '')}?start=ref_{user_id}"
-            prizes_text += f"\n🔗 *Referral linkingiz:* {referral_link}"
-
-            await self.bot_instance.send_message(
-                chat_id=user_id,
-                text=prizes_text,
-                parse_mode="Markdown"
-            )
-
-        except Exception as e:
-            logger.error(f"Handle prizes error: {e}")
-
-    async def handle_points(self, user_id: int, settings: Dict):
-        """Ballar handler"""
-        try:
-            # Redis dan ballarni olish
-            points_key = f"user_points:{self.bot_id}:{user_id}"
-            points = 0
-
-            if redis_client.is_connected():
-                points_data = redis_client.client.get(points_key)
-                points = int(points_data) if points_data else 0
-
-            points_text = (
-                f"📊 *Ballaringiz:* {points} ball\n\n"
-                f"🏆 *Reytingda:* ...\n"
-                f"⭐ *Status:* Oddiy foydalanuvchi"
-            )
-
-            await self.bot_instance.send_message(
-                chat_id=user_id,
-                text=points_text,
-                parse_mode="Markdown"
-            )
-
-        except Exception as e:
-            logger.error(f"Handle points error: {e}")
-
-    async def handle_rating(self, user_id: int, settings: Dict):
-        """Reyting handler"""
-        try:
-            rating_text = "🏆 *TOP 10:*\n\n"
-
-            # Bu yerda database dan reyting olish kerak
-            # Hozircha demo
-            for i in range(1, 6):
-                rating_text += f"{i}. User{i} - {100 - i * 10} ball\n"
-
-            rating_text += f"\n🎯 *Siz:* 15-o'rin - 35 ball"
-
-            await self.bot_instance.send_message(
-                chat_id=user_id,
-                text=rating_text,
-                parse_mode="Markdown"
-            )
-
-        except Exception as e:
-            logger.error(f"Handle rating error: {e}")
-
-    async def handle_rules(self, user_id: int, settings: Dict):
-        """Qoidalar handler"""
-        try:
-            rules_text = settings.get('rules_text', 'Qoidalar admin tomonidan belgilangan.')
-
-            await self.bot_instance.send_message(
-                chat_id=user_id,
-                text=f"📜 *Konkurs qoidalari:*\n\n{rules_text}",
-                parse_mode="Markdown"
-            )
-
-        except Exception as e:
-            logger.error(f"Handle rules error: {e}")
-
-    async def handle_check_subscription(self, callback: Dict, settings: Dict):
-        """Check subscription handler"""
-        try:
+            data = callback.get("data", "")
             user_id = callback["from"]["id"]
 
-            # Channel check
-            all_joined = True
-            for channel in settings.get('channels', []):
-                # Bu yerda haqiqiy tekshirish bo'lishi kerak
-                pass
+            # Channel subscription check
+            if data == "check_subscription":
+                if 'channel' in self.handlers:
+                    await self.handlers['channel'].handle_check_subscription(callback, settings, self.bot)
 
-            if all_joined:
-                response = "✅ Barcha kanallarga obuna bo'ldingiz!"
-            else:
-                response = "❌ Hali barcha kanallarga obuna bo'lmadingiz!"
+            # Generate invitation post
+            elif data == "generate_invitation_post":
+                if 'menu' in self.handlers:
+                    await self.handlers['menu'].handle_generate_invitation_post(callback, self.bot)
 
-            await self.bot_instance.send_message(
-                chat_id=user_id,
-                text=response
-            )
+            # Answer callback query
+            await self.bot.answer_callback_query(callback["id"])
 
         except Exception as e:
-            logger.error(f"Handle check subscription error: {e}")
+            logger.error(f"Process callback error: {e}")
+
+    async def stop(self):
+        """Stop worker"""
+        self.running = False
+
+        # Close bot session
+        if self.bot:
+            await self.bot.session.close()
+
+        logger.info(f"✅ Bot worker stopped: {self.bot_id}")
 
 
 class BotWorkerPool:
-    """Worker pool"""
+    """Worker pool manager"""
 
     def __init__(self):
         self.workers = {}
+        self.worker_configs = {}
 
     async def start_worker(self, bot_id: int, worker_count: int = 1):
-        """Worker boshlash"""
-        if bot_id not in self.workers:
-            self.workers[bot_id] = []
+        """Start worker for bot"""
+        if bot_id in self.workers:
+            logger.info(f"Worker already running for bot {bot_id}")
+            return
 
+        workers = []
         for i in range(worker_count):
             worker = BotWorker(bot_id)
-            self.workers[bot_id].append(worker)
+            workers.append(worker)
             await worker.start()
-            logger.info(f"Worker {i + 1} started for bot {bot_id}")
+
+        self.workers[bot_id] = workers
+        self.worker_configs[bot_id] = {'count': worker_count}
+
+        logger.info(f"✅ Started {worker_count} workers for bot {bot_id}")
 
     async def stop_worker(self, bot_id: int):
-        """Worker to'xtatish"""
-        if bot_id in self.workers:
-            for worker in self.workers[bot_id]:
-                worker.running = False
-            del self.workers[bot_id]
-            logger.info(f"Workers stopped for bot {bot_id}")
+        """Stop worker for bot"""
+        if bot_id not in self.workers:
+            logger.info(f"No workers running for bot {bot_id}")
+            return
+
+        for worker in self.workers[bot_id]:
+            await worker.stop()
+
+        del self.workers[bot_id]
+        del self.worker_configs[bot_id]
+
+        logger.info(f"✅ Stopped workers for bot {bot_id}")
+
+    async def get_worker_status(self, bot_id: int) -> Dict[str, Any]:
+        """Get worker status"""
+        if bot_id not in self.workers:
+            return {'status': 'stopped', 'workers': 0}
+
+        workers = self.workers[bot_id]
+        running_count = sum(1 for w in workers if w.running)
+
+        return {
+            'status': 'running' if running_count > 0 else 'stopped',
+            'workers': len(workers),
+            'running': running_count,
+            'bot_id': bot_id
+        }
+
+    async def get_all_status(self) -> Dict[int, Dict[str, Any]]:
+        """Get status of all workers"""
+        status = {}
+        for bot_id in self.workers:
+            status[bot_id] = await self.get_worker_status(bot_id)
+
+        return status
 
 
-# Global worker pool
+# Global worker pool instance
 worker_pool = BotWorkerPool()

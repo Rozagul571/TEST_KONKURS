@@ -1,3 +1,4 @@
+#django_app/core/admin/channel_admin.py
 from django.contrib import admin
 from ..models.channel import Channel
 
