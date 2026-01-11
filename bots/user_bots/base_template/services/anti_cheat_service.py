@@ -9,7 +9,6 @@ from shared.redis_client import redis_client
 
 logger = logging.getLogger(__name__)
 
-
 class AntiCheatService:
     """Anti-cheat service for detecting fraudulent activities"""
 
@@ -20,16 +19,13 @@ class AntiCheatService:
         """Check rate limit for user action"""
         try:
             key = f"rate_limit:{self.bot_id}:{user_id}:{action}"
-
             if action not in limits:
                 return False
 
             limit_config = limits[action]
             limit = limit_config.get('limit', 5)
             window = limit_config.get('window', 60)
-
             return await redis_client.check_rate_limit(key, limit, window)
-
         except Exception as e:
             logger.error(f"Check rate limit error: {e}")
             return False
@@ -39,7 +35,6 @@ class AntiCheatService:
         try:
             user_state = await redis_client.get_user_state(self.bot_id, user_id)
             current_time = time.time()
-
             suspicious = {
                 'is_suspicious': False,
                 'reasons': [],
@@ -66,7 +61,6 @@ class AntiCheatService:
                 suspicious['is_suspicious'] = True
 
             return suspicious
-
         except Exception as e:
             logger.error(f"Detect bot patterns error: {e}")
             return {'is_suspicious': False, 'reasons': [], 'score': 0}

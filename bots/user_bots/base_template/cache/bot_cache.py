@@ -1,11 +1,13 @@
-#bots/user_bots/base_template/cache/bot_cache.py
+# bots/user_bots/base_template/cache/bot_cache.py
 """
 Bot cache module - Redis cached bot settings
+Vazifasi: Bot sozlamalarini cache qilish
 """
 import logging
-import json
 from typing import Optional, Dict, Any
+
 from shared.redis_client import redis_client
+from shared.constants import CACHE_TTL
 
 logger = logging.getLogger(__name__)
 
@@ -17,14 +19,17 @@ class BotCache:
         self.bot_id = bot_id
 
     async def get_settings(self) -> Optional[Dict[str, Any]]:
-        """Get bot settings from cache"""
+        """
+        Settings ni cache dan olish
+
+        Returns:
+            Settings dict yoki None
+        """
         try:
             if not redis_client.is_connected():
                 return None
 
-            key = f"bot_settings:{self.bot_id}"
             data = await redis_client.get_bot_settings(self.bot_id)
-
             if data:
                 logger.debug(f"Cache hit for bot {self.bot_id}")
                 return data
@@ -35,11 +40,20 @@ class BotCache:
             logger.error(f"Get settings cache error: {e}")
             return None
 
-    async def set_settings(self, settings: Dict[str, Any], ttl: int = 300):
-        """Set bot settings to cache"""
+    async def set_settings(self, settings: Dict[str, Any], ttl: int = None):
+        """
+        Settings ni cache ga saqlash
+
+        Args:
+            settings: Settings dict
+            ttl: Time to live (sekundlarda)
+        """
         try:
             if not redis_client.is_connected():
                 return False
+
+            if ttl is None:
+                ttl = CACHE_TTL.get('bot_settings', 300)
 
             await redis_client.set_bot_settings(self.bot_id, settings, ttl)
             logger.debug(f"Settings cached for bot {self.bot_id}")
@@ -50,7 +64,7 @@ class BotCache:
             return False
 
     async def clear_settings(self):
-        """Clear bot settings from cache"""
+        """Settings cache ni tozalash"""
         try:
             if not redis_client.is_connected():
                 return False
@@ -64,7 +78,7 @@ class BotCache:
             return False
 
     async def get_competition_info(self) -> Optional[Dict[str, Any]]:
-        """Get competition info from cache"""
+        """Competition info ni olish"""
         try:
             settings = await self.get_settings()
             if not settings:

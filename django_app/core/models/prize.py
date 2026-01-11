@@ -1,3 +1,4 @@
+# django_app/core/models/prize.py
 from django.db import models
 from .competition import Competition
 

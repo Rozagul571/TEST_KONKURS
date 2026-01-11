@@ -1,9 +1,11 @@
-#bots/user_bots/base_template/handlers/menu_handler.py
+# bots/user_bots/base_template/handlers/menu_handler.py
 """
 Complete menu handlers for all main menu options - TO'G'RILANGAN
+Vazifasi: Asosiy menu tugmalarini handle qilish
 """
 import logging
 from typing import Dict, Any
+
 from aiogram import Bot
 
 from bots.user_bots.base_template.services.competition_service import CompetitionService
@@ -12,9 +14,10 @@ from bots.user_bots.base_template.services.point_service import PointService
 from bots.user_bots.base_template.services.prize_service import PrizeService
 from bots.user_bots.base_template.services.rating_service import RatingService
 from bots.user_bots.base_template.services.invitation_service import InvitationService
+from bots.user_bots.base_template.keyboards.inline import get_invitation_keyboard
 from shared.redis_client import redis_client
-from shared.utils import format_points, truncate_text, get_prize_emoji
-from shared.constants import RATE_LIMITS, CACHE_KEYS
+from shared.utils import format_points, truncate_text, get_prize_emoji, clean_channel_username
+from shared.constants import MESSAGES, RATE_LIMITS, CACHE_KEYS
 
 logger = logging.getLogger(__name__)
 
@@ -34,101 +37,73 @@ class MenuHandlers:
     async def handle_konkurs_qatnashish(self, message: Dict[str, Any], bot: Bot):
         """Handle 'Konkursda qatnashish' button"""
         user_id = message['from']['id']
-
         try:
-            # Rate limit check
+            # Rate limit
             if await self._check_rate_limit(user_id, 'menu_konkurs'):
-                await bot.send_message(user_id, "🚫 Biroz kuting...")
+                await bot.send_message(user_id, MESSAGES['rate_limited'])
                 return
 
-            # Get participant
+            # Participant olish
             participant = await self.user_service.get_participant_by_user_id(user_id, self.bot_id)
             if not participant:
-                await bot.send_message(
-                    user_id,
-                    "❌ Avval /start ni bosing va konkursda ro'yxatdan o'ting!",
-                    parse_mode="Markdown"
-                )
+                await bot.send_message(user_id, MESSAGES['not_registered'], parse_mode="Markdown")
                 return
 
-            # Get competition settings
+            # Competition settings
             settings = await self.competition_service.get_competition_settings(self.bot_id)
             if not settings:
-                await bot.send_message(user_id, "❌ Sozlamalar topilmadi")
+                await bot.send_message(user_id, MESSAGES['settings_not_found'])
                 return
 
-            # Generate invitation post
-            invitation_text = await self.invitation_service.generate_invitation_post(
-                settings, participant
-            )
+            # Taklif posti generatsiya
+            invitation_text = await self.invitation_service.generate_invitation_post(settings, participant)
 
-            # Create keyboard
-            bot_username = settings.get('bot_username', '').replace('@', '')
+            # Referral link
+            bot_username = clean_channel_username(settings.get('bot_username', ''))
             referral_link = f"https://t.me/{bot_username}?start=ref_{participant.referral_code}"
 
-            from bots.user_bots.base_template.keyboards.inline import get_invitation_keyboard
             keyboard = get_invitation_keyboard(referral_link)
 
-            # Send invitation post
-            await bot.send_message(
-                user_id,
-                invitation_text,
-                reply_markup=keyboard,
-                parse_mode="Markdown"
-            )
-
-            # Send instruction
-            instruction = (
-                f"👆 *Taklif postini do'stlaringizga ulashing!*\n\n"
-                f"🔗 *Sizning taklif havolangiz:*\n`{referral_link}`\n\n"
-                "Har bir siz orqali ro'yxatdan o'tgan do'stingiz uchun sizga ballar beriladi!"
-            )
-
-            await bot.send_message(
-                user_id,
-                instruction,
-                parse_mode="Markdown"
-            )
+            # Taklif postini yuborish
+            await bot.send_message(user_id, invitation_text, reply_markup=keyboard, parse_mode="Markdown")
+            await bot.send_message(user_id, MESSAGES['invitation_share_instruction'], parse_mode="Markdown")
 
         except Exception as e:
-            logger.error(f"Handle konkurs qatnashish error: {e}")
-            await bot.send_message(user_id, "❌ Xatolik yuz berdi")
+            logger.error(f"Handle konkurs qatnashish error: {e}", exc_info=True)
+            await bot.send_message(user_id, MESSAGES['error_occurred'])
+
+    async def handle_konkurs_qatnashish_callback(self, callback: Dict[str, Any], bot: Bot):
+        """Callback versiyasi - taklif_posti"""
+        message = {'from': callback['from'], 'chat': callback['message']['chat']}
+        await self.handle_konkurs_qatnashish(message, bot)
+        await bot.answer_callback_query(callback['id'])
 
     async def handle_sovgalar(self, message: Dict[str, Any], bot: Bot):
         """Handle 'Sovg'alar' button"""
         user_id = message['from']['id']
-
         try:
-            # Rate limit check
+            # Rate limit
             if await self._check_rate_limit(user_id, 'menu_sovgalar'):
-                await bot.send_message(user_id, "🚫 Biroz kuting...")
+                await bot.send_message(user_id, MESSAGES['rate_limited'])
                 return
 
-            # Get prizes
+            # Sovrinlarni olish
             prizes = await self.prize_service.get_prizes()
-
             if not prizes:
-                text = (
-                    "🎁 *Sovg'alar hozircha belgilanmagan.*\n\n"
-                    "Admin tez orada konkurs sovrinlarini belgilaydi."
-                )
-                await bot.send_message(user_id, text, parse_mode="Markdown")
+                await bot.send_message(user_id, MESSAGES['no_prizes'], parse_mode="Markdown")
                 return
 
-            # Format prizes text
-            text = "🎁 *KONKURS SOVG'ALARI* 🎁\n\n"
+            # Text format
+            text = MESSAGES['prizes_header']
 
             for prize in prizes:
                 emoji = get_prize_emoji(prize['place'])
                 place_text = f"{prize['place']}-o'rin"
 
-                # Format prize display
+                # Display text
                 if prize['type'] == 'number' and prize.get('prize_amount'):
                     amount = f"{int(float(prize['prize_amount'])):,} soʻm"
-                    if prize.get('prize_name'):
-                        display_text = f"{prize['prize_name']} ({amount})"
-                    else:
-                        display_text = f"{amount}"
+                    display_text = f"{prize['prize_name']} ({amount})" if prize.get('prize_name') else amount
                 elif prize.get('prize_name'):
                     display_text = prize['prize_name']
                 else:
@@ -142,157 +117,150 @@ class MenuHandlers:
 
                 text += "\n"
 
-            # Add motivation
-            text += "🏆 *G'olib bo'lish uchun ko'proq ball yig'ing!*\n"
-            text += "🚀 Do'stlaringizni taklif qiling va ballaringizni oshiring!"
+            text += MESSAGES['prizes_footer']
 
-            await bot.send_message(
-                user_id,
-                text,
-                parse_mode="Markdown"
-            )
+            await bot.send_message(user_id, text, parse_mode="Markdown")
 
         except Exception as e:
-            logger.error(f"Handle sovgalar error: {e}")
-            await bot.send_message(user_id, "❌ Xatolik yuz berdi")
+            logger.error(f"Handle sovgalar error: {e}", exc_info=True)
+            await bot.send_message(user_id, MESSAGES['error_occurred'])
 
     async def handle_ballarim(self, message: Dict[str, Any], bot: Bot):
         """Handle 'Ballarim' button"""
         user_id = message['from']['id']
-
         try:
-            # Rate limit check
+            # Rate limit
             if await self._check_rate_limit(user_id, 'menu_ballarim'):
-                await bot.send_message(user_id, "🚫 Biroz kuting...")
+                await bot.send_message(user_id, MESSAGES['rate_limited'])
                 return
 
-            # Get participant
+            # Participant olish
             participant = await self.user_service.get_participant_by_user_id(user_id, self.bot_id)
             if not participant:
-                await bot.send_message(
-                    user_id,
-                    "❌ Avval /start ni bosing va konkursda ro'yxatdan o'ting!",
-                    parse_mode="Markdown"
-                )
+                await bot.send_message(user_id, MESSAGES['not_registered'], parse_mode="Markdown")
                 return
 
-            # Get points stats
+            # Stats olish
             stats = await self.point_service.get_user_stats(participant)
 
-            # Format points text
-            text = f"📊 *BALLARIM: {format_points(participant.current_points)} ball*\n\n"
+            # Text format
+            text = MESSAGES['points_header'].format(points=format_points(participant.current_points))
 
-            # Level information
-            if 'level_info' in stats:
-                level_info = stats['level_info']
-                text += f"⭐ *Daraja:* {level_info['level_name']} (Daraja {level_info['level']})\n"
-                text += f"📈 *Keyingi darajaga:* {format_points(level_info['points_to_next'])} ball qoldi\n"
-                text += f"⏳ *Progress:* {level_info['progress_percentage']}%\n\n"
-
-            # Points breakdown
-            text += "💰 *Ballar tafsiloti:*\n"
-            text += f"• 📢 Kanallar: {format_points(stats.get('channel_points', 0))} ball\n"
-            text += f"• 👥 Referrallar: {format_points(stats.get('referral_points', 0))} ball\n"
-            text += f"• ⭐ Premium bonus: {format_points(stats.get('premium_points', 0))} ball\n"
-            text += f"• 📝 Boshqa: {format_points(stats.get('other_points', 0))} ball\n\n"
+            text += MESSAGES['points_breakdown'].format(
+                channel=format_points(stats.get('channel_points', 0)),
+                referral=format_points(stats.get('referral_points', 0)),
+                premium=format_points(stats.get('premium_points', 0)),
+                other=format_points(stats.get('other_points', 0))
+            )
 
             # Premium status
             if stats.get('has_premium'):
-                text += "⭐ *Siz Premium foydalanuvchisiz!* Ikki baravar ko'p ball olasiz.\n\n"
+                text += MESSAGES['points_premium_status']
 
             # Motivation
-            text += "🚀 *Ko'proq ball yig'ish uchun:*\n"
-            text += "1. Do'stlaringizni taklif qiling\n"
-            text += "2. Kunlik topshiriqlarni bajar\n"
-            text += "3. Postlarni ulashing\n"
-            text += "4. Aktiv bo'ling!"
+            text += MESSAGES['points_motivation']
 
-            await bot.send_message(
-                user_id,
-                text,
-                parse_mode="Markdown"
-            )
+            await bot.send_message(user_id, text, parse_mode="Markdown")
 
         except Exception as e:
-            logger.error(f"Handle ballarim error: {e}")
-            await bot.send_message(user_id, "❌ Xatolik yuz berdi")
+            logger.error(f"Handle ballarim error: {e}", exc_info=True)
+            await bot.send_message(user_id, MESSAGES['error_occurred'])
 
     async def handle_reyting(self, message: Dict[str, Any], bot: Bot):
         """Handle 'Reyting' button"""
         user_id = message['from']['id']
-
         try:
-            # Rate limit check
+            # Rate limit
             if await self._check_rate_limit(user_id, 'menu_reyting'):
-                await bot.send_message(user_id, "🚫 Biroz kuting...")
+                await bot.send_message(user_id, MESSAGES['rate_limited'])
                 return
 
-            # Get rating text
+            # Rating text olish
             rating_text = await self.rating_service.get_rating_text(user_id)
 
-            await bot.send_message(
-                user_id,
-                rating_text,
-                parse_mode="Markdown"
-            )
+            await bot.send_message(user_id, rating_text, parse_mode="Markdown")
 
         except Exception as e:
-            logger.error(f"Handle reyting error: {e}")
-            await bot.send_message(user_id, "❌ Xatolik yuz berdi")
+            logger.error(f"Handle reyting error: {e}", exc_info=True)
+            await bot.send_message(user_id, MESSAGES['error_occurred'])
+
+    async def handle_refresh_rating(self, callback: Dict[str, Any], bot: Bot):
+        """Refresh rating callback"""
+        user_id = callback['from']['id']
+        try:
+            # Cache ni tozalash va yangilash
+            await self.rating_service.update_cache(user_id)
+            rating_text = await self.rating_service.get_rating_text(user_id)
+
+            await bot.edit_message_text(
+                chat_id=callback['message']['chat']['id'],
+                message_id=callback['message']['message_id'],
+                text=rating_text,
+                parse_mode="Markdown"
+            )
+            await bot.answer_callback_query(callback['id'], "✅ Yangilandi!")
+        except Exception as e:
+            logger.error(f"Refresh rating error: {e}")
+            await bot.answer_callback_query(callback['id'], "Xatolik yuz berdi")
 
     async def handle_shartlar(self, message: Dict[str, Any], bot: Bot):
         """Handle 'Shartlar' button"""
         user_id = message['from']['id']
-
         try:
-            # Rate limit check
+            # Rate limit
             if await self._check_rate_limit(user_id, 'menu_shartlar'):
-                await bot.send_message(user_id, "🚫 Biroz kuting...")
+                await bot.send_message(user_id, MESSAGES['rate_limited'])
                 return
 
-            # Get competition settings
+            # Settings olish
             settings = await self.competition_service.get_competition_settings(self.bot_id)
             if not settings:
-                await bot.send_message(user_id, "❌ Sozlamalar topilmadi")
+                await bot.send_message(user_id, MESSAGES['settings_not_found'])
                 return
 
-            # Get rules text
+            # Rules text
             rules_text = settings.get('rules_text', '')
             if not rules_text:
-                rules_text = (
-                    "📜 *KONKURS QOIDALARI*\n\n"
-                    "1. Barcha majburiy kanallarga obuna bo'ling\n"
-                    "2. Do'stlaringizni taklif qiling va ballar yig'ing\n"
-                    "3. Har bir taklif qilgan do'stingiz uchun ballar olasiz\n"
-                    "4. Premium foydalanuvchilar 2x ko'p ball oladi\n"
-                    "5. Eng ko'p ball to'plagan TOP 10 sovrinlarni oladi\n"
-                    "6. Har bir qoidani buzish diskvalifikatsiyaga olib kelishi mumkin\n\n"
-                    "🚀 Ko'proq odam taklif qiling va g'olib bo'ling!"
-                )
+                rules_text = MESSAGES['rules_default']
 
-            text = f"📜 *KONKURS QOIDALARI*\n\n{rules_text}"
+            text = MESSAGES['rules_header'] + rules_text
 
-            await bot.send_message(
-                user_id,
-                text,
-                parse_mode="Markdown"
-            )
+            await bot.send_message(user_id, text, parse_mode="Markdown")
 
         except Exception as e:
-            logger.error(f"Handle shartlar error: {e}")
-            await bot.send_message(user_id, "❌ Xatolik yuz berdi")
+            logger.error(f"Handle shartlar error: {e}", exc_info=True)
+            await bot.send_message(user_id, MESSAGES['error_occurred'])
+
+    async def handle_share_post(self, callback: Dict[str, Any], bot: Bot):
+        """Share post callback"""
+        user_id = callback['from']['id']
+        try:
+            participant = await self.user_service.get_participant_by_user_id(user_id, self.bot_id)
+            if not participant:
+                await bot.answer_callback_query(callback['id'], MESSAGES['not_registered'], show_alert=True)
+                return
+
+            settings = await self.competition_service.get_competition_settings(self.bot_id)
+            bot_username = clean_channel_username(settings.get('bot_username', ''))
+            referral_link = f"https://t.me/{bot_username}?start=ref_{participant.referral_code}"
+
+            await bot.answer_callback_query(
+                callback['id'],
+                f"Havolani nusxalang va do'stlaringizga yuboring:\n{referral_link}",
+                show_alert=True
+            )
+        except Exception as e:
+            logger.error(f"Share post error: {e}")
+            await bot.answer_callback_query(callback['id'], MESSAGES['error_occurred'], show_alert=True)
 
     async def _check_rate_limit(self, user_id: int, action: str) -> bool:
-        """Check rate limit for menu actions"""
+        """Rate limit tekshirish"""
         try:
-            key = CACHE_KEYS['rate_limit'].format(self.bot_id, user_id, action)
-            limit_config = RATE_LIMITS.get('message', {'limit': 30, 'window': 60})
-
-            return await redis_client.check_rate_limit(
-                key,
-                limit_config['limit'],
-                limit_config['window']
-            )
+            if not redis_client.is_connected():
+                return False
+            key = CACHE_KEYS['rate_limit'].format(bot_id=self.bot_id, user_id=user_id, action=action)
+            limit_config = RATE_LIMITS.get('menu_action', {'limit': 10, 'window': 30})
+            return await redis_client.check_rate_limit(key, limit_config['limit'], limit_config['window'])
         except Exception as e:
             logger.error(f"Menu rate limit check error: {e}")
             return False

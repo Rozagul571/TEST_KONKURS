@@ -1,29 +1,71 @@
+# shared/utils.py
 """
-Utility functions for the entire system
+Utility functions - Umumiy yordamchi funksiyalar
+Vazifasi: Barcha modullar uchun umumiy funksiyalar
 """
 import re
-import json
 import logging
-import hashlib
-from typing import Dict, Any, Optional, List
-from datetime import datetime, timedelta
 import secrets
 import string
+from typing import Dict, Any, Optional
+from datetime import datetime
+
+from shared.constants import PRIZE_EMOJIS
 
 logger = logging.getLogger(__name__)
 
 
+def get_display_name(user) -> str:
+    """
+    User uchun ko'rsatiladigan ism olish
+
+    Args:
+        user: User object (model yoki dict)
+    """
+    if isinstance(user, dict):
+        first_name = user.get('first_name', '')
+        last_name = user.get('last_name', '')
+        username = user.get('username', '')
+        telegram_id = user.get('telegram_id', user.get('id', ''))
+    else:
+        first_name = getattr(user, 'first_name', '') or ''
+        last_name = getattr(user, 'last_name', '') or ''
+        username = getattr(user, 'username', '') or ''
+        telegram_id = getattr(user, 'telegram_id', '')
+
+    if first_name and last_name:
+        return f"{first_name} {last_name}"
+    elif first_name:
+        return first_name
+    elif last_name:
+        return last_name
+    elif username:
+        return f"@{username}"
+    else:
+        return f"User {telegram_id}"
+
+
 def extract_user_data(message: Dict[str, Any]) -> Dict[str, Any]:
-    """Extract user data from Telegram message"""
+    """
+    Telegram xabaridan user ma'lumotlarini olish
+
+    Args:
+        message: Telegram message dict
+
+    Returns:
+        User ma'lumotlari dict
+    """
     try:
         from_user = message.get('from', {})
+        first_name = from_user.get('first_name', '') or ''
+        last_name = from_user.get('last_name', '') or ''
 
         return {
             'telegram_id': from_user.get('id'),
-            'username': from_user.get('username', ''),
-            'first_name': from_user.get('first_name', ''),
-            'last_name': from_user.get('last_name', ''),
-            'full_name': f"{from_user.get('first_name', '')} {from_user.get('last_name', '')}".strip(),
+            'username': from_user.get('username', '') or '',
+            'first_name': first_name,
+            'last_name': last_name,
+            'full_name': f"{first_name} {last_name}".strip() or from_user.get('username', ''),
             'language_code': from_user.get('language_code', 'uz'),
             'is_premium': from_user.get('is_premium', False),
             'is_bot': from_user.get('is_bot', False),
@@ -35,7 +77,15 @@ def extract_user_data(message: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def extract_referral_code(text: str) -> Optional[str]:
-    """Extract referral code from /start command"""
+    """
+    /start buyrug'idan referral kodini olish
+
+    Args:
+        text: /start ref_ABC123 formatidagi text
+
+    Returns:
+        Referral kodi yoki None
+    """
     if not text:
         return None
 
@@ -43,103 +93,152 @@ def extract_referral_code(text: str) -> Optional[str]:
     for part in parts:
         if part.startswith('ref_'):
             return part.replace('ref_', '')
-
     return None
 
 
 def get_prize_emoji(place: int) -> str:
-    """Get emoji for prize place"""
-    emoji_map = {
-        1: "🥇",
-        2: "🥈",
-        3: "🥉",
-        4: "4️⃣",
-        5: "5️⃣",
-        6: "6️⃣",
-        7: "7️⃣",
-        8: "8️⃣",
-        9: "9️⃣",
-        10: "🔟"
-    }
-    return emoji_map.get(place, "🎁")
+    """
+    O'rin uchun emoji olish
+
+    Args:
+        place: O'rin raqami (1-10)
+
+    Returns:
+        Emoji string
+    """
+    return PRIZE_EMOJIS.get(place, "🎁")
 
 
 def format_points(points: int) -> str:
-    """Format points with comma separator"""
+    """
+    Ballarni formatlash (vergul bilan)
+
+    Args:
+        points: Ball soni
+
+    Returns:
+        Formatlangan string (1,234)
+    """
     return f"{points:,}"
 
 
 def format_currency(amount: float) -> str:
-    """Format currency amount"""
+    """
+    Pul miqdorini formatlash
+
+    Args:
+        amount: Summa
+
+    Returns:
+        Formatlangan string (1,234,567 soʻm)
+    """
     return f"{amount:,.0f} soʻm"
 
 
 def generate_referral_code(length: int = 8) -> str:
-    """Generate unique referral code"""
+    """
+    Unikal referral kodi generatsiya qilish
+
+    Args:
+        length: Kod uzunligi
+
+    Returns:
+        Random kod string
+    """
     alphabet = string.ascii_letters + string.digits
     return ''.join(secrets.choice(alphabet) for _ in range(length))
 
 
-def generate_hash(data: str) -> str:
-    """Generate SHA256 hash"""
-    return hashlib.sha256(data.encode()).hexdigest()[:16]
-
-
-def validate_username(username: str) -> bool:
-    """Validate Telegram username"""
-    if not username:
-        return False
-
-    # Remove @ if present
-    username = username.replace('@', '')
-
-    # Telegram username rules
-    pattern = r'^[a-zA-Z][a-zA-Z0-9_]{4,31}$'
-    return bool(re.match(pattern, username))
-
-
 def truncate_text(text: str, max_length: int = 200, suffix: str = "...") -> str:
-    """Truncate text with ellipsis"""
+    """
+    Textni qisqartirish
+
+    Args:
+        text: Asl text
+        max_length: Maksimal uzunlik
+        suffix: Qisqartirilganda qo'shiladigan qo'shimcha
+
+    Returns:
+        Qisqartirilgan text
+    """
+    if not text:
+        return ""
     if len(text) <= max_length:
         return text
-
     return text[:max_length - len(suffix)] + suffix
 
 
-def parse_datetime(dt_str: str) -> Optional[datetime]:
-    """Parse datetime string"""
-    try:
-        # Try ISO format
-        return datetime.fromisoformat(dt_str.replace('Z', '+00:00'))
-    except ValueError:
-        try:
-            # Try other common formats
-            formats = [
-                '%Y-%m-%d %H:%M:%S',
-                '%d.%m.%Y %H:%M',
-                '%m/%d/%Y %H:%M:%S'
-            ]
+def escape_md(text: str) -> str:
+    """
+    Markdown uchun maxsus belgilarni escape qilish (Markdown V1)
 
-            for fmt in formats:
-                try:
-                    return datetime.strptime(dt_str, fmt)
-                except ValueError:
-                    continue
-        except Exception:
-            pass
+    Args:
+        text: Asl text
 
-    return None
+    Returns:
+        Escaped text
+    """
+    if not text:
+        return ""
+    escape_chars = ['_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!']
+    for char in escape_chars:
+        text = text.replace(char, f'\\{char}')
+    return text
+
+
+def escape_md2(text: str) -> str:
+    """
+    MarkdownV2 uchun maxsus belgilarni escape qilish
+
+    Args:
+        text: Asl text
+
+    Returns:
+        Escaped text
+    """
+    if not text:
+        return ""
+    # MarkdownV2 special characters
+    escape_chars = ['_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!']
+    result = ""
+    for char in text:
+        if char in escape_chars:
+            result += f"\\{char}"
+        else:
+            result += char
+    return result
+
+
+def escape_html(text: str) -> str:
+    """
+    HTML uchun maxsus belgilarni escape qilish
+
+    Args:
+        text: Asl text
+
+    Returns:
+        Escaped text
+    """
+    if not text:
+        return ""
+    return text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
 
 
 def calculate_time_remaining(end_time: datetime) -> Dict[str, int]:
-    """Calculate time remaining until end time"""
-    now = datetime.now()
+    """
+    Tugash vaqtiga qolgan vaqtni hisoblash
 
+    Args:
+        end_time: Tugash datetime
+
+    Returns:
+        Dict: days, hours, minutes, seconds
+    """
+    now = datetime.now()
     if end_time <= now:
         return {'days': 0, 'hours': 0, 'minutes': 0, 'seconds': 0}
 
     delta = end_time - now
-
     return {
         'days': delta.days,
         'hours': delta.seconds // 3600,
@@ -148,37 +247,98 @@ def calculate_time_remaining(end_time: datetime) -> Dict[str, int]:
     }
 
 
-def safe_json_loads(data: str) -> Optional[Dict]:
-    """Safely parse JSON"""
+def format_time_remaining(end_time: datetime) -> str:
+    """
+    Qolgan vaqtni formatlash
+
+    Args:
+        end_time: Tugash datetime
+
+    Returns:
+        Formatlangan string
+    """
+    remaining = calculate_time_remaining(end_time)
+    parts = []
+    if remaining['days'] > 0:
+        parts.append(f"{remaining['days']} kun")
+    if remaining['hours'] > 0:
+        parts.append(f"{remaining['hours']} soat")
+    if remaining['minutes'] > 0:
+        parts.append(f"{remaining['minutes']} daqiqa")
+    return ", ".join(parts) if parts else "Tugadi"
+
+
+def clean_channel_username(username: str) -> str:
+    """
+    Kanal username ni tozalash
+
+    Args:
+        username: Raw username (@channel, https://t.me/channel, etc.)
+
+    Returns:
+        Tozalangan username (channel)
+    """
+    if not username:
+        return ""
+    if not isinstance(username, str):
+        username = str(username)
+
+    # URL formatlarni tozalash
+    username = username.replace('https://t.me/', '')
+    username = username.replace('http://t.me/', '')
+    username = username.replace('t.me/', '')
+    username = username.lstrip('@')
+    username = username.strip()
+
+    return username
+
+
+def validate_telegram_username(username: str) -> bool:
+    """
+    Telegram username validatsiyasi
+
+    Args:
+        username: Tekshiriladigan username
+
+    Returns:
+        Valid yoki yo'q
+    """
+    if not username:
+        return False
+    # Telegram username rules: 5-32 characters, a-z, 0-9, _
+    pattern = r'^[a-zA-Z][a-zA-Z0-9_]{4,31}$'
+    return bool(re.match(pattern, username))
+
+
+def safe_int(value: Any, default: int = 0) -> int:
+    """
+    Xavfsiz int ga o'tkazish
+
+    Args:
+        value: O'tkaziladigan qiymat
+        default: Default qiymat
+
+    Returns:
+        int qiymat
+    """
     try:
-        return json.loads(data)
-    except:
-        return None
+        return int(value)
+    except (ValueError, TypeError):
+        return default
 
 
-def get_percentage(part: int, total: int) -> float:
-    """Calculate percentage"""
-    if total == 0:
-        return 0.0
-    return (part / total) * 100
+def safe_float(value: Any, default: float = 0.0) -> float:
+    """
+    Xavfsiz float ga o'tkazish
 
+    Args:
+        value: O'tkaziladigan qiymat
+        default: Default qiymat
 
-class PerformanceTimer:
-    """Performance timer context manager"""
-
-    def __init__(self, operation_name: str):
-        self.operation_name = operation_name
-        self.start_time = None
-
-    def __enter__(self):
-        self.start_time = datetime.now()
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        end_time = datetime.now()
-        duration = (end_time - self.start_time).total_seconds()
-
-        if duration > 1.0:
-            logger.warning(f"⏱️ {self.operation_name} took {duration:.2f}s")
-        else:
-            logger.debug(f"⏱️ {self.operation_name} took {duration:.3f}s")
+    Returns:
+        float qiymat
+    """
+    try:
+        return float(value)
+    except (ValueError, TypeError):
+        return default

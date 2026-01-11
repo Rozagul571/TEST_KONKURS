@@ -12,11 +12,13 @@ fastapi:
 redis:
 	redis-server
 
+ngrok:
+	ngrok http 8001
 run-celery:
 	celery -A celery_worker worker -l info
 
-unicorn:
-	uvicorn fastapi_app.main:app --reload --host 0.0.0.0 --port 8001
+#unicorn:
+#	uvicorn fastapi_app.main:app --reload --host 0.0.0.0 --port 8001
 help:
 	@echo "setup → venv + pip"
 	@echo "migrate → DB"

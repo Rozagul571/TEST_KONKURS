@@ -1,24 +1,25 @@
-# bots/user_bots/handlers/channel_handler.py
+# bots/user_bots/base_template/handlers/channel_handler.py
 """
-Obuna bo'ldim tugmasi handleri
+Obuna bo'ldim tugmasi handleri - TO'G'RILANGAN
+Vazifasi: Foydalanuvchi "A'zo bo'ldim" tugmasini bosganda kanal obunasini tekshirish
 """
-
 import logging
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from aiogram import Bot
 
 from bots.user_bots.base_template.cache.bot_cache import BotCache
-from bots.user_bots.base_template.keyboards import get_channels_keyboard
-from bots.user_bots.base_template.services import PointService
+from bots.user_bots.base_template.keyboards.inline import get_channels_keyboard
+from bots.user_bots.base_template.services.point_service import PointService
 from bots.user_bots.base_template.services.registration_service import RegistrationService
+from bots.user_bots.base_template.services.channel_service import ChannelService
 from shared.redis_client import redis_client
-
+from shared.constants import MESSAGES
 
 logger = logging.getLogger(__name__)
 
 
 class ChannelHandler:
-    """Channel handler - 'Obuna bo'ldim' tugmasi"""
+    """A'zo bo'ldim tugmasi handleri"""
 
     def __init__(self, bot_id: int):
         self.bot_id = bot_id
@@ -27,155 +28,191 @@ class ChannelHandler:
         self.point_service = PointService(bot_id)
 
     async def handle_check_subscription(self, callback: Dict[str, Any], bot: Bot) -> None:
-        """'Obuna bo'ldim' tugmasi bosilganda"""
+        """
+        'A'zo bo'ldim' tugmasi bosilganda kanal tekshiruvi
+
+        Args:
+            callback: Telegram callback_query dict
+            bot: Aiogram Bot instance
+
+        Note: settings argument olib tashlandi - cache dan olinadi
+        """
+        user_id = callback['from']['id']
+        chat_id = callback['message']['chat']['id']
+        message_id = callback['message']['message_id']
+
         try:
-            user_id = callback['from']['id']
-            chat_id = callback['message']['chat']['id']
-            message_id = callback['message']['message_id']
+            # Settings ni cache dan olish
+            settings = await self.bot_cache.get_settings()
+            if not settings:
+                # Cache da yo'q bo'lsa DB dan olish
+                from bots.user_bots.base_template.services.competition_service import CompetitionService
+                comp_service = CompetitionService()
+                settings = await comp_service.get_competition_settings(self.bot_id)
 
-            # 1. Check channels
-            channels_status = await self._check_channels(user_id, bot)
-
-            if not channels_status['all_joined']:
-                # Update message with remaining channels
-                await self._update_channels_message(
-                    user_id, chat_id, message_id, bot, channels_status
-                )
-
-                await bot.answer_callback_query(
-                    callback['id'],
-                    text=f"❌ Yana {len(channels_status['not_joined'])} ta kanalga obuna bo'lish kerak!",
-                    show_alert=True
-                )
+            if not settings:
+                await bot.answer_callback_query(callback['id'], MESSAGES['settings_not_found'], show_alert=True)
                 return
 
-            # 2. All channels joined - complete registration
-            await self._complete_registration(user_id, callback, bot)
+            # Kanal tekshiruvi
+            channel_service = ChannelService(settings)
+            channels_status = await channel_service.check_user_channels(user_id, bot)
 
-            await bot.answer_callback_query(
-                callback['id'],
-                text="✅ Barcha kanallarga obuna bo'ldingiz!",
-                show_alert=True
-            )
+            # Agar hali obuna bo'lmagan kanallar bo'lsa
+            if not channels_status['all_joined']:
+                not_joined = channels_status.get('not_joined', [])
+                await self._update_channels_message(chat_id, message_id, bot, not_joined)
+                remaining = len(not_joined)
+                await bot.answer_callback_query(callback['id'], text=f"⚠️ Yana {remaining} ta kanalga obuna bo'ling!",
+                                                show_alert=True)
+                return
+
+            # Hammasi obuna bo'lgan - ro'yxatdan o'tkazish
+            await self._complete_registration(user_id, callback, bot, settings)
+            await bot.answer_callback_query(callback['id'], "✅ Muvaffaqiyatli ro'yxatdan o'tdingiz!", show_alert=True)
 
         except Exception as e:
-            logger.error(f"Check subscription error: {e}")
-            await bot.answer_callback_query(
-                callback['id'],
-                text="❌ Xatolik yuz berdi. Keyinroq urinib ko'ring.",
-                show_alert=True
-            )
+            logger.error(f"Channel handler error: {e}", exc_info=True)
+            await bot.answer_callback_query(callback['id'], MESSAGES['error_occurred'], show_alert=True)
 
-    async def _check_channels(self, user_id: int, bot: Bot) -> Dict[str, Any]:
-        """Kanallarni tekshirish"""
-        channels = await self.bot_cache.get_channels()
+    async def _update_channels_message(self, chat_id: int, message_id: int, bot: Bot, not_joined: list):
+        """
+        Obuna bo'linmagan kanallarni ko'rsatish
 
-        not_joined = []
-        for channel in channels:
-            try:
-                member = await bot.get_chat_member(
-                    chat_id=f"@{channel['channel_username']}",
-                    user_id=user_id
-                )
-
-                if member.status not in ['member', 'administrator', 'creator']:
-                    not_joined.append(channel)
-
-            except Exception as e:
-                logger.warning(f"Channel check error: {e}")
-                not_joined.append(channel)
-
-        return {
-            'all_joined': len(not_joined) == 0,
-            'not_joined': not_joined,
-            'total': len(channels)
-        }
-
-    async def _update_channels_message(self, user_id: int, chat_id: int, message_id: int,
-                                       bot: Bot, channels_status: Dict) -> None:
-        """Kanallar xabarini yangilash"""
-        keyboard = get_channels_keyboard(channels_status['not_joined'])
-
-        remaining = len(channels_status['not_joined'])
-        text = f"⚠️ *Hali {remaining} ta kanalga obuna bo'lmagansiz!*\n\n"
-
-        for channel in channels_status['not_joined'][:5]:
-            text += f"• @{channel['channel_username']}\n"
-
-        if remaining > 5:
-            text += f"• ... va yana {remaining - 5} ta\n"
-
-        text += "\n👇 *Har bir kanal tugmasini bosing va obuna bo'ling*"
-
-        await bot.edit_message_text(
-            chat_id=chat_id,
-            message_id=message_id,
-            text=text,
-            reply_markup=keyboard,
-            parse_mode="Markdown"
-        )
-
-    async def _complete_registration(self, user_id: int, callback: Dict, bot: Bot) -> None:
-        """Ro'yxatdan o'tishni yakunlash"""
+        Args:
+            chat_id: Chat ID
+            message_id: Tahrirlash kerak bo'lgan xabar ID
+            bot: Bot instance
+            not_joined: Obuna bo'linmagan kanallar ro'yxati
+        """
         try:
-            # Extract user data from callback
+            keyboard = get_channels_keyboard(not_joined)
+            remaining = len(not_joined)
+
+            text = f"⚠️ Hali {remaining} ta kanalga obuna bo'lmagansiz!\n\n"
+            for i, channel in enumerate(not_joined[:10], 1):
+                # channel_username ni xavfsiz olish
+                username = channel.get('channel_username', '') or ''
+                username = username.replace('@', '').strip() if username else ''
+                name = channel.get('channel_name', username) or username or 'Kanal'
+                if username:
+                    text += f"{i}. @{username} - {name}\n"
+                else:
+                    text += f"{i}. {name}\n"
+
+            if remaining > 10:
+                text += f"\n... va yana {remaining - 10} ta kanal\n"
+
+            text += "\n👇 Har bir tugmani bosing va obuna bo'ling"
+
+            await bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=text, reply_markup=keyboard)
+        except Exception as e:
+            logger.error(f"Update channels message error: {e}")
+
+    async def _complete_registration(self, user_id: int, callback: Dict, bot: Bot, settings: Dict):
+        """
+        Ro'yxatdan o'tkazish - barcha kanallardan keyin
+
+        Args:
+            user_id: Telegram user ID
+            callback: Callback query dict
+            bot: Bot instance
+            settings: Competition settings
+        """
+        try:
+            # User ma'lumotlarini olish
+            from_user = callback.get('from', {})
             user_data = {
                 'telegram_id': user_id,
-                'username': callback['from'].get('username', ''),
-                'first_name': callback['from'].get('first_name', ''),
-                'last_name': callback['from'].get('last_name', ''),
-                'full_name': f"{callback['from'].get('first_name', '')} {callback['from'].get('last_name', '')}".strip(),
-                'is_premium': callback['from'].get('is_premium', False)
+                'username': from_user.get('username', ''),
+                'first_name': from_user.get('first_name', ''),
+                'last_name': from_user.get('last_name', ''),
+                'is_premium': from_user.get('is_premium', False)
             }
 
-            # Check pending referral
-            ref_key = f"pending_referral:{self.bot_id}:{user_id}"
-            referrer_id = None
-
-            if redis_client.is_connected():
-                referrer_id = redis_client.client.get(ref_key)
-
+            # Pending referral ni tekshirish
             referrer = None
-            if referrer_id:
-                referrer = await self.registration_service.get_participant_by_id(int(referrer_id))
+            state = await redis_client.get_user_state(self.bot_id, user_id)
+            if state and 'referrer_id' in state:
+                referrer_id = state['referrer_id']
+                referrer = await self.registration_service.get_participant_by_user_id(referrer_id)
 
-            # Register user
-            participant = await self.registration_service.register_user(
-                user_data=user_data,
-                referrer=referrer
-            )
-
+            # Finalize registration
+            participant = await self.registration_service.finalize_registration(user_data, referrer)
             if not participant:
-                raise Exception("Failed to register user")
+                raise Exception("Registration failed")
 
-            # Add channel points
-            await self.point_service.add_channel_points(
-                participant=participant,
-                is_premium=user_data['is_premium']
-            )
+            # Kanal ballarini qo'shish
+            channels_count = len(settings.get('channels', []))
+            await self._award_channel_points(participant, user_data['is_premium'], channels_count, settings)
 
-            # Clear pending referral
-            if redis_client.is_connected() and referrer_id:
-                redis_client.client.delete(ref_key)
+            # Referral ballarini qo'shish (agar mavjud bo'lsa)
+            if referrer and referrer.user.telegram_id != user_id:
+                await self._award_referral_points(referrer, user_data['is_premium'], settings)
 
-            # Update message
+            # Success message
             await bot.edit_message_text(
                 chat_id=callback['message']['chat']['id'],
                 message_id=callback['message']['message_id'],
-                text="🎉 *Barcha kanallarga obuna bo'ldingiz! Ro'yxatdan o'tish yakunlandi!*",
-                parse_mode="Markdown"
+                text="🎉 Tabriklaymiz! Siz konkursda muvaffaqiyatli ro'yxatdan o'tdingiz!"
             )
 
-            # Send success message
-            await self._send_success_message(user_id, bot, participant)
+            # Start handler ni chaqirish (welcome + menu)
+            from .start_handler import StartHandler
+            start_handler = StartHandler(self.bot_id)
+            mock_message = {'from': callback['from'], 'chat': {'id': user_id}, 'text': '/start registered'}
+            await start_handler.send_welcome_and_menu(mock_message, bot, settings, participant)
 
         except Exception as e:
-            logger.error(f"Complete registration error: {e}")
-            raise
+            logger.error(f"Complete registration error: {e}", exc_info=True)
 
-    async def _send_success_message(self, user_id: int, bot: Bot, participant) -> None:
-        """Muvaffaqiyat xabarini yuborish"""
-        # This uses the same logic as StartHandler._send_success_message
-        from bots.user_bots.base_template.handlers.start_handler import StartHandler
-        handler = StartHandler(self.bot_id)
-        await handler._send_success_message(user_id, bot, participant)
+    async def _award_channel_points(self, participant, is_premium: bool, channels_count: int, settings: Dict):
+        """Kanal qo'shilish balllarini hisoblash va qo'shish"""
+        try:
+            point_rules = settings.get('point_rules', {})
+
+            # Har bir kanal uchun ball
+            base_points_per_channel = point_rules.get('channel_join', 1)
+            base_total = base_points_per_channel * channels_count
+
+            # Premium bonus
+            if is_premium:
+                premium_multiplier = point_rules.get('premium_user', 2)
+                total_points = base_total * premium_multiplier
+            else:
+                total_points = base_total
+
+            if total_points > 0:
+                participant.add_points(total_points, 'channel_join')
+                logger.info(f"Channel points awarded: user={participant.telegram_id}, points={total_points}")
+
+        except Exception as e:
+            logger.error(f"Award channel points error: {e}")
+
+    async def _award_referral_points(self, referrer, is_premium_referred: bool, settings: Dict):
+        """Referral ballarini qo'shish"""
+        try:
+            point_rules = settings.get('point_rules', {})
+
+            # Oddiy referral ball
+            base_referral_points = point_rules.get('referral', 5)
+
+            # Premium referral uchun
+            if is_premium_referred:
+                premium_referral_points = point_rules.get('premium_ref', 0)
+                if premium_referral_points > 0:
+                    total_points = premium_referral_points
+                else:
+                    # Default: 2x
+                    total_points = base_referral_points * 2
+                reason = 'premium_ref'
+            else:
+                total_points = base_referral_points
+                reason = 'referral'
+
+            if total_points > 0:
+                referrer.add_points(total_points, reason)
+                logger.info(f"Referral points awarded: referrer={referrer.telegram_id}, points={total_points}")
+
+        except Exception as e:
+            logger.error(f"Award referral points error: {e}")

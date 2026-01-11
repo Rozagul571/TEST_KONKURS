@@ -1,4 +1,4 @@
-# bots/main_bot/handlers/setup.py (to'liq, inline get_bot_created_message)
+# bots/main_bot/handlers/setup.py (to'liq, inline get_bot_created_message)from aiogram import Router, F
 from aiogram import Router, F
 from aiogram.types import Message
 from aiogram.fsm.context import FSMContext
@@ -50,6 +50,7 @@ async def get_token_username(message: Message, state: FSMContext):
         from aiogram import Bot
         test_bot = Bot(token=token)
         me = await test_bot.get_me()
+        # FIX: Username ni case insensitive validate, lekin aslini saqla
         if me.username.lower() != bot_username[1:].lower():
             await message.answer("❌ Token va username mos emas! BotFather dan to'g'ri oling.")
             await test_bot.session.close()

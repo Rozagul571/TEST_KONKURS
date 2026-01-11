@@ -27,12 +27,10 @@ def get_display_name(user):
         return f"User {user.telegram_id}"
 
 
-
 def extract_user_data(message: Dict[str, Any]) -> Dict[str, Any]:
     """Extract user data from Telegram message"""
     try:
         from_user = message.get('from', {})
-
         return {
             'telegram_id': from_user.get('id'),
             'username': from_user.get('username', ''),
@@ -53,12 +51,10 @@ def extract_referral_code(text: str) -> Optional[str]:
     """Extract referral code from /start command"""
     if not text:
         return None
-
     parts = text.split()
     for part in parts:
         if part.startswith('ref_'):
             return part.replace('ref_', '')
-
     return None
 
 
@@ -99,19 +95,15 @@ def truncate_text(text: str, max_length: int = 200, suffix: str = "...") -> str:
     """Truncate text with ellipsis"""
     if len(text) <= max_length:
         return text
-
     return text[:max_length - len(suffix)] + suffix
 
 
 def calculate_time_remaining(end_time: datetime) -> Dict[str, int]:
     """Calculate time remaining until end time"""
     now = datetime.now()
-
     if end_time <= now:
         return {'days': 0, 'hours': 0, 'minutes': 0, 'seconds': 0}
-
     delta = end_time - now
-
     return {
         'days': delta.days,
         'hours': delta.seconds // 3600,

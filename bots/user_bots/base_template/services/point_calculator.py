@@ -1,4 +1,4 @@
-# bots/user_bots/base_template/services/point_calculator.py
+#bots/user_bots/base_template/services/point_calculator.py
 """
 Point calculator service - TO'G'RILANGAN
 """
@@ -7,13 +7,10 @@ from typing import Dict, Any, Optional, Tuple
 from asgiref.sync import sync_to_async
 from django.db import transaction
 from django.utils import timezone
-
 from django_app.core.models import Participant, Point
 from django_app.core.models.pointrule import PointAction
-from shared.utils import format_points
 
 logger = logging.getLogger(__name__)
-
 
 class PointCalculator:
     """Point calculation service"""
@@ -41,7 +38,6 @@ class PointCalculator:
             total_points = base_total
             multiplier = 1.0
             premium_bonus = 0
-
             if is_premium:
                 premium_multiplier = self._get_rule_value(PointAction.PREMIUM_USER, 2.0)
                 multiplier = float(premium_multiplier)
@@ -58,7 +54,6 @@ class PointCalculator:
             }
 
             logger.info(f"Channel points: user={user_id}, points={total_points}")
-
             return total_points, breakdown
 
         except Exception as e:
@@ -73,7 +68,6 @@ class PointCalculator:
 
             total_points = base_points
             premium_bonus = 0
-
             if is_premium_referral:
                 premium_points = self._get_rule_value(PointAction.PREMIUM_REFERRAL, 10)
                 if premium_points:
@@ -92,7 +86,6 @@ class PointCalculator:
             }
 
             logger.info(f"Referral points: referrer={referrer_id}, points={total_points}")
-
             return total_points, breakdown
 
         except Exception as e:

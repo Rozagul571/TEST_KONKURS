@@ -1,8 +1,14 @@
-#shared/anti_cheat.py
+# shared/anti_cheat.py
+"""
+Anti-cheat engine for detecting fraudulent activities
+Vazifasi: Firibgarlikni aniqlash va oldini olish
+"""
 import time
 import logging
-from typing import Dict, List, Optional
+from typing import Dict, Any
+
 from shared.redis_client import redis_client
+from shared.constants import RATE_LIMITS
 
 logger = logging.getLogger(__name__)
 
@@ -13,12 +19,21 @@ class AntiCheatEngine:
     def __init__(self, bot_id: int):
         self.bot_id = bot_id
 
-    async def check_rate_limit(self, user_id: int, action: str,
-                               limits: Dict[str, Dict[str, int]]) -> bool:
+    async def check_rate_limit(self, user_id: int, action: str, limits: Dict[str, Dict[str, int]] = None) -> bool:
         """
-        Check if user exceeds rate limits for specific action
-        Returns: True if blocked, False if allowed
+        Foydalanuvchi harakatini rate limit tekshirish
+
+        Args:
+            user_id: Telegram user ID
+            action: Harakat turi (start, message, callback, etc.)
+            limits: Limitlar dict (optional, default RATE_LIMITS)
+
+        Returns:
+            True agar blocked (limit oshgan)
         """
+        if limits is None:
+            limits = RATE_LIMITS
+
         if action not in limits:
             return False
 
@@ -27,16 +42,27 @@ class AntiCheatEngine:
         window = limit_config.get('window', 60)
 
         key = f"rate_limit:{self.bot_id}:{user_id}:{action}"
-        is_blocked = redis_client.check_rate_limit(key, limit, window)
+
+        if not redis_client.is_connected():
+            return False
+
+        is_blocked = await redis_client.check_rate_limit(key, limit, window)
 
         if is_blocked:
             logger.warning(f"Rate limit hit: bot={self.bot_id}, user={user_id}, action={action}")
 
         return is_blocked
 
-    async def detect_bot_patterns(self, user_id: int, update: dict) -> Dict:
+    async def detect_bot_patterns(self, user_id: int, update: Dict) -> Dict[str, Any]:
         """
-        Detect bot-like patterns in user behavior
+        Bot-like pattern larni aniqlash
+
+        Args:
+            user_id: Telegram user ID
+            update: Telegram update dict
+
+        Returns:
+            Dict: is_suspicious, reasons, score
         """
         suspicious = {
             'is_suspicious': False,
@@ -44,56 +70,80 @@ class AntiCheatEngine:
             'score': 0
         }
 
-        # Check message timing patterns
-        user_state = redis_client.get_user_state(self.bot_id, user_id)
-        current_time = time.time()
+        if not redis_client.is_connected():
+            return suspicious
 
-        if user_state:
-            last_action_time = user_state.get('last_action_time', 0)
-            time_diff = current_time - last_action_time
+        try:
+            # User state olish
+            user_state = await redis_client.get_user_state(self.bot_id, user_id)
+            current_time = time.time()
 
-            # Too fast actions (less than 100ms)
-            if time_diff < 0.1:
-                suspicious['score'] += 30
-                suspicious['reasons'].append('action_too_fast')
+            if user_state:
+                last_action_time = user_state.get('last_action_time', 0)
+                time_diff = current_time - last_action_time
 
-            # Pattern detection (same action repeated)
-            action_count = user_state.get(f"action_count:{update.get('type', 'unknown')}", 0)
-            if action_count > 10:
-                suspicious['score'] += 20
-                suspicious['reasons'].append('repetitive_actions')
+                # Juda tez harakatlar (100ms dan kam)
+                if time_diff < 0.1:
+                    suspicious['score'] += 30
+                    suspicious['reasons'].append('action_too_fast')
 
-        # Update user state
-        new_state = {
-            'last_action_time': current_time,
-            f"action_count:{update.get('type', 'unknown')}": (action_count or 0) + 1,
-            'last_update': update
-        }
-        redis_client.set_user_state(self.bot_id, user_id, new_state)
+                # Takroriy harakatlar
+                action_type = update.get('type', 'unknown')
+                action_count = user_state.get(f"action_count:{action_type}", 0)
+                if action_count > 10:
+                    suspicious['score'] += 20
+                    suspicious['reasons'].append('repetitive_actions')
 
-        if suspicious['score'] > 40:
-            suspicious['is_suspicious'] = True
-            logger.warning(f"Suspicious activity detected: bot={self.bot_id}, user={user_id}")
+            # User state yangilash
+            new_state = user_state or {}
+            new_state['last_action_time'] = current_time
+            action_type = update.get('type', 'unknown')
+            new_state[f"action_count:{action_type}"] = new_state.get(f"action_count:{action_type}", 0) + 1
+
+            await redis_client.set_user_state(self.bot_id, user_id, new_state, 300)
+
+            if suspicious['score'] > 40:
+                suspicious['is_suspicious'] = True
+                logger.warning(f"Suspicious activity: bot={self.bot_id}, user={user_id}, score={suspicious['score']}")
+
+        except Exception as e:
+            logger.error(f"Detect bot patterns error: {e}")
 
         return suspicious
 
-    async def check_join_spam(self, user_id: int, channel_check_count: int) -> bool:
+    async def check_join_spam(self, user_id: int) -> bool:
         """
-        Check for join/check subscription spam
+        Join/check subscription spam tekshirish
+
+        Args:
+            user_id: Telegram user ID
+
+        Returns:
+            True agar spam
         """
         key = f"join_check:{self.bot_id}:{user_id}"
+        limit_config = RATE_LIMITS.get('join_check', {'limit': 5, 'window': 15})
 
-        # Allow max 4 checks in 15 seconds
-        is_spam = redis_client.check_rate_limit(key, 4, 15)
+        if not redis_client.is_connected():
+            return False
+
+        is_spam = await redis_client.check_rate_limit(key, limit_config['limit'], limit_config['window'])
 
         if is_spam:
-            logger.warning(f"Join check spam detected: bot={self.bot_id}, user={user_id}")
+            logger.warning(f"Join check spam: bot={self.bot_id}, user={user_id}")
 
         return is_spam
 
-    async def validate_referral(self, referrer_id: int, referred_id: int) -> Dict:
+    async def validate_referral(self, referrer_id: int, referred_id: int) -> Dict[str, Any]:
         """
-        Validate referral to prevent cheating
+        Referral ni validatsiya qilish
+
+        Args:
+            referrer_id: Taklif qilgan user ID
+            referred_id: Taklif qilingan user ID
+
+        Returns:
+            Dict: valid, reasons, warning
         """
         validation = {
             'valid': True,
@@ -101,50 +151,67 @@ class AntiCheatEngine:
             'warning': None
         }
 
-        # Check self-referral
+        # O'zini o'zi taklif qilish
         if referrer_id == referred_id:
             validation['valid'] = False
             validation['reasons'].append('self_referral')
+            return validation
 
-        # Check referral chain length
-        chain_key = f"ref_chain:{self.bot_id}:{referrer_id}"
-        chain_length = redis_client.client.incr(chain_key) if redis_client.client else 1
+        if not redis_client.is_connected():
+            return validation
 
-        if chain_length > 50:  # Too many referrals from same user
-            validation['valid'] = False
-            validation['reasons'].append('referral_chain_too_long')
-            validation['warning'] = 'Possible referral fraud detected'
+        try:
+            # Referral chain uzunligi
+            chain_key = f"ref_chain:{self.bot_id}:{referrer_id}"
+            if redis_client.client:
+                chain_length = redis_client.client.incr(chain_key)
+                redis_client.client.expire(chain_key, 86400)  # 24 soat
 
-        # Check duplicate referral
-        ref_key = f"ref_dup:{self.bot_id}:{referred_id}"
-        if redis_client.client and redis_client.client.exists(ref_key):
-            validation['valid'] = False
-            validation['reasons'].append('duplicate_referral')
-        elif redis_client.client:
-            redis_client.client.setex(ref_key, 86400, '1')  # 24 hours
+                if chain_length > 100:  # Juda ko'p referral
+                    validation['warning'] = 'High referral count detected'
+
+            # Duplicate referral
+            ref_key = f"ref_dup:{self.bot_id}:{referred_id}"
+            if redis_client.client and redis_client.client.exists(ref_key):
+                validation['valid'] = False
+                validation['reasons'].append('duplicate_referral')
+            elif redis_client.client:
+                redis_client.client.setex(ref_key, 86400, '1')
+
+        except Exception as e:
+            logger.error(f"Validate referral error: {e}")
 
         return validation
 
     async def get_user_risk_score(self, user_id: int) -> int:
         """
-        Calculate user risk score based on behavior
+        Foydalanuvchi risk balini hisoblash
+
+        Args:
+            user_id: Telegram user ID
+
+        Returns:
+            Risk score (0-100)
         """
         score = 0
 
-        # Check multiple account patterns
-        ip_key = f"user_ip:{self.bot_id}:{user_id}"
-        # (In production, you would check IP patterns here)
+        if not redis_client.is_connected():
+            return score
 
-        # Action frequency
-        action_key = f"user_actions:{self.bot_id}:{user_id}"
-        action_count = redis_client.client.get(action_key) if redis_client.client else 0
+        try:
+            # Harakat chastotasi
+            action_key = f"user_actions:{self.bot_id}:{user_id}"
+            if redis_client.client:
+                action_count = redis_client.client.get(action_key)
+                if action_count and int(action_count) > 100:
+                    score += 30
 
-        if int(action_count or 0) > 100:
-            score += 30
+        except Exception as e:
+            logger.error(f"Get user risk score error: {e}")
 
         return score
 
 
-# Factory function
 def get_anti_cheat_engine(bot_id: int) -> AntiCheatEngine:
+    """Factory function"""
     return AntiCheatEngine(bot_id)

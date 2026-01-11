@@ -7,7 +7,6 @@ from django.utils import timezone
 from .user import User
 from .base import TimestampMixin
 
-# FIX: Global cipher o'rniga har chaqirilganda yangilash
 def get_cipher():
     FERNET_KEY = os.getenv("FERNET_KEY")
     if not FERNET_KEY:

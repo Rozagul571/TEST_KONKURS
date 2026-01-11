@@ -1,42 +1,47 @@
-# fastapi_app/api/routes/webhooks/dispatch.py - YANGI VERSIYA
+# fastapi_app/api/routes/webhooks/dispatch.py
+"""
+B Botlar uchun webhook dispatcher
+MUHIM: Redis bo'lmasa TO'G'RIDAN-TO'G'RI process qilish
+"""
 from fastapi import APIRouter, Request, BackgroundTasks
 import logging
-import json
+import asyncio
 
 logger = logging.getLogger(__name__)
+
 router = APIRouter()
 
 
 @router.post("/{bot_id}")
 async def dispatch_webhook(bot_id: int, request: Request, background_tasks: BackgroundTasks):
-    """B Botlar uchun webhook dispatcher"""
+    """
+    B Bot webhook - TO'G'RIDAN-TO'G'RI PROCESS
+    Redis kerak emas - oddiy va ishonchli
+    """
     try:
-        # Update ni olish
         update = await request.json()
+        logger.info(f"📥 Webhook received for bot {bot_id}: update_id={update.get('update_id')}")
 
-        # Bot ID ni qo'shish
-        update['_bot_id'] = bot_id
+        # Background task da process qilish (tez javob qaytarish uchun)
+        background_tasks.add_task(process_update_directly, bot_id, update)
 
-        # Background task ga qo'shish
-        background_tasks.add_task(process_update_async, bot_id, update)
-
-        # Darhol javob qaytarish
         return {"ok": True}
 
     except Exception as e:
         logger.error(f"Webhook error: {e}")
-        return {"ok": True}  # Telegramga har doim True qaytarish kerak
+        return {"ok": True}
 
 
-async def process_update_async(bot_id: int, update: dict):
-    """Async update processing"""
+async def process_update_directly(bot_id: int, update: dict):
+    """
+    Update ni TO'G'RIDAN-TO'G'RI process qilish
+    Redis kerak emas!
+    """
     try:
-        from shared.redis_client import redis_client
+        from bots.user_bots.base_template.bot_processor import BotProcessor
 
-        # Redis ga saqlash
-        if redis_client.is_connected():
-            await redis_client.push_update(bot_id, update)
-            logger.info(f"Update queued for bot {bot_id}")
+        processor = BotProcessor(bot_id)
+        await processor.process_update(update)
 
     except Exception as e:
-        logger.error(f"Process update error: {e}")
+        logger.error(f"Process update error for bot {bot_id}: {e}", exc_info=True)
