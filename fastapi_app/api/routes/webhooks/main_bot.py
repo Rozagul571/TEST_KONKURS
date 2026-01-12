@@ -24,11 +24,10 @@ async def telegram_main_webhook(request: Request):
     try:
         update = await request.json()
 
-        # Log received update
         logger.info(f"📩 Telegram update received: {update.get('update_id', 'unknown')}")
 
-        # Save to Redis queue for async processing
-        bot_id = 1  # Main bot ID
+
+        bot_id = 1
         await redis_client.push_update(bot_id, update)
 
         return {"ok": True, "update_id": update.get('update_id')}
@@ -58,12 +57,12 @@ async def contact_admin(request: AdminContactRequest):
 
         # Format message
         text = f"""
-👤 *Yangi xabar foydalanuvchidan*
+    👤 *Yangi xabar foydalanuvchidan*
 
-🆔 *User ID:* {request.user_tg_id}
-📝 *Xabar:* {request.message}
+    🆔 *User ID:* {request.user_tg_id}
+    📝 *Xabar:* {request.message}
 
-✉️ *Javob berish uchun:* `admin_answer_{request.user_tg_id}`
+    ✉️ *Javob berish uchun:* `admin_answer_{request.user_tg_id}`
         """.strip()
 
         # Send to superadmin
@@ -90,11 +89,11 @@ async def send_confirmation_to_user(user_id: int, bot_token: str):
     try:
         bot = Bot(token=bot_token)
         text = """
-✅ *Xabaringiz muvaffaqiyatli yuborildi!*
+    ✅ *Xabaringiz muvaffaqiyatli yuborildi!*
 
-📨 Administator tez orada siz bilan bog'lanadi.
+    📨 Administator tez orada siz bilan bog'lanadi.
 
-⏳ Iltimos, kutib turing yoki keyinroq qayta urinib ko'ring.
+    ⏳ Iltimos, kutib turing yoki keyinroq qayta urinib ko'ring.
         """.strip()
 
         await bot.send_message(

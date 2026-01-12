@@ -157,7 +157,7 @@ class RatingService:
 # class RatingService:
 #     """High-performance rating service with caching"""
 #
-#     def __init__(self, bot_id: int):
+#     def __init__.py(self, bot_id: int):
 #         self.bot_id = bot_id
 #         self.cache_ttl = CACHE_TTL.get('rating', 30)
 #

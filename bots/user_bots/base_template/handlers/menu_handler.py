@@ -23,7 +23,6 @@ logger = logging.getLogger(__name__)
 
 
 class MenuHandlers:
-    """Complete menu handlers for user bot"""
 
     def __init__(self, bot_id: int):
         self.bot_id = bot_id
@@ -100,7 +99,6 @@ class MenuHandlers:
                 emoji = get_prize_emoji(prize['place'])
                 place_text = f"{prize['place']}-o'rin"
 
-                # Display text
                 if prize['type'] == 'number' and prize.get('prize_amount'):
                     amount = f"{int(float(prize['prize_amount'])):,} soʻm"
                     display_text = f"{prize['prize_name']} ({amount})" if prize.get('prize_name') else amount

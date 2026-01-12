@@ -1,4 +1,4 @@
-# django_app/__init__.py
+# django_app/__init__.py.py
 default_app_config = 'django_app.core.apps.CoreConfig'
 
 # django_app/core/apps.py

@@ -13,22 +13,10 @@ logger = logging.getLogger(__name__)
 
 
 class InvitationService:
-    """Service for generating invitation posts"""
-
     def __init__(self, bot_id: int):
         self.bot_id = bot_id
 
     async def generate_invitation_post(self, settings: Dict[str, Any], participant) -> str:
-        """
-        Taklif posti textini generatsiya qilish
-
-        Args:
-            settings: Competition settings
-            participant: Participant object
-
-        Returns:
-            Formatlangan taklif posti
-        """
         try:
             from .prize_service import PrizeService
             prize_service = PrizeService(self.bot_id)

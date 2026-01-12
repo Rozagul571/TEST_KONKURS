@@ -1,4 +1,3 @@
-# bots/main_bot/handlers/setup.py (to'liq, inline get_bot_created_message)from aiogram import Router, F
 from aiogram import Router, F
 from aiogram.types import Message
 from aiogram.fsm.context import FSMContext
@@ -15,15 +14,20 @@ import os
 import logging
 logger = logging.getLogger(__name__)
 router = Router()
+
+
 class SetupStates(StatesGroup):
     waiting_token_username = State()
     waiting_username = State()
     waiting_password = State()
+
+
 @router.message(F.text == "/setup_bot")
 async def setup_start(message: Message, state: FSMContext):
     current_state = await state.get_state()
     if current_state:
-        await message.answer("⚠️ Siz allaqachon sozlash jarayonidasiz. Davom eting yoki /cancel buyrug'i bilan bekor qiling.")
+        await message.answer(
+            "⚠️ Siz allaqachon sozlash jarayonidasiz. Davom eting yoki /cancel buyrug'i bilan bekor qiling.")
         return
     video_url = os.getenv("VIDEO_GUIDE_URL")
     video_text = f"\n🎥 Video yo'riqnoma: {video_url}" if video_url else ""
@@ -38,6 +42,8 @@ async def setup_start(message: Message, state: FSMContext):
         parse_mode="Markdown"
     )
     await state.set_state(SetupStates.waiting_token_username)
+
+
 @router.message(SetupStates.waiting_token_username)
 async def get_token_username(message: Message, state: FSMContext):
     parts = message.text.strip().split()
@@ -50,7 +56,6 @@ async def get_token_username(message: Message, state: FSMContext):
         from aiogram import Bot
         test_bot = Bot(token=token)
         me = await test_bot.get_me()
-        # FIX: Username ni case insensitive validate, lekin aslini saqla
         if me.username.lower() != bot_username[1:].lower():
             await message.answer("❌ Token va username mos emas! BotFather dan to'g'ri oling.")
             await test_bot.session.close()
@@ -62,6 +67,8 @@ async def get_token_username(message: Message, state: FSMContext):
     await state.update_data(bot_username=bot_username, token=token)
     await message.answer("✅ Token qabul qilindi.\nAdmin panel uchun username kiriting (3+ belgi):")
     await state.set_state(SetupStates.waiting_username)
+
+
 @router.message(SetupStates.waiting_username)
 async def get_username(message: Message, state: FSMContext):
     username = message.text.strip()
@@ -71,6 +78,8 @@ async def get_username(message: Message, state: FSMContext):
     await state.update_data(admin_username=username)
     await message.answer("✅ Username qabul qilindi.\nParol kiriting (6+ belgi):")
     await state.set_state(SetupStates.waiting_password)
+
+
 @router.message(SetupStates.waiting_password)
 async def get_password(message: Message, state: FSMContext):
     password = message.text.strip()
@@ -103,7 +112,6 @@ async def get_password(message: Message, state: FSMContext):
     )
     unique_username = await create_django_user(admin_username_base, password, user.telegram_id)
     admin_url = f"{os.getenv('ADMIN_PANEL_URL')}?bot_id={bot_setup.id}"
-    # Inline text (old get_bot_created_message)
     text = (
         "🎉 <b>Bot Muvaffaqiyatli Yaratildi!</b>\n\n"
         f"🤖 <b>Bot:</b> {bot_username}\n"
@@ -119,6 +127,8 @@ async def get_password(message: Message, state: FSMContext):
     keyboard = get_admin_panel_keyboard(admin_url)
     await message.answer(text, reply_markup=keyboard, parse_mode="HTML")
     await state.clear()
+
+
 @sync_to_async
 def create_django_user(admin_username_base, password, telegram_id):
     admin_username = f"{admin_username_base}_{telegram_id}"

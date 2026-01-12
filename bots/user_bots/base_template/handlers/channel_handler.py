@@ -1,8 +1,3 @@
-# bots/user_bots/base_template/handlers/channel_handler.py
-"""
-Obuna bo'ldim tugmasi handleri - TO'G'RILANGAN
-Vazifasi: Foydalanuvchi "A'zo bo'ldim" tugmasini bosganda kanal obunasini tekshirish
-"""
 import logging
 from typing import Dict, Any, Optional
 from aiogram import Bot
@@ -19,7 +14,6 @@ logger = logging.getLogger(__name__)
 
 
 class ChannelHandler:
-    """A'zo bo'ldim tugmasi handleri"""
 
     def __init__(self, bot_id: int):
         self.bot_id = bot_id
@@ -29,13 +23,7 @@ class ChannelHandler:
 
     async def handle_check_subscription(self, callback: Dict[str, Any], bot: Bot) -> None:
         """
-        'A'zo bo'ldim' tugmasi bosilganda kanal tekshiruvi
-
-        Args:
-            callback: Telegram callback_query dict
-            bot: Aiogram Bot instance
-
-        Note: settings argument olib tashlandi - cache dan olinadi
+        cache dan olinadi
         """
         user_id = callback['from']['id']
         chat_id = callback['message']['chat']['id']
@@ -78,12 +66,6 @@ class ChannelHandler:
     async def _update_channels_message(self, chat_id: int, message_id: int, bot: Bot, not_joined: list):
         """
         Obuna bo'linmagan kanallarni ko'rsatish
-
-        Args:
-            chat_id: Chat ID
-            message_id: Tahrirlash kerak bo'lgan xabar ID
-            bot: Bot instance
-            not_joined: Obuna bo'linmagan kanallar ro'yxati
         """
         try:
             keyboard = get_channels_keyboard(not_joined)

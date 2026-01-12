@@ -1,8 +1,4 @@
 # fastapi_app/api/routes/webhooks/notify.py
-"""
-Notification webhooks
-Vazifasi: User konkurs to'ldirganda notification yuborish
-"""
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from aiogram import Bot
@@ -29,15 +25,13 @@ class NotificationPayload(BaseModel):
 async def handle_user_completed(payload: NotificationPayload):
     """
     User konkurs to'ldirganda notification yuborish
-
-    Note: bots/main_bot/services/notification_service.py dagi
+     bots/main_bot/services/notification_service.py dagi
     send_user_competition_completed bilan bir xil vazifani bajaradi.
     Bu endpoint FastAPI orqali chaqiriladi (admin panel dan).
     """
     try:
         bot_username = await get_bot_username_async(payload.user_tg_id)
 
-        # Text - MESSAGES dan olish
         text = MESSAGES['competition_completed'].format(
             bot_username=bot_username,
             name=payload.competition_name,
@@ -60,11 +54,9 @@ async def handle_user_completed(payload: NotificationPayload):
 
 @sync_to_async
 def get_bot_username_async(user_tg_id: int) -> str:
-    """Bot username ni olish"""
     return get_bot_username(user_tg_id)
 
 
 def get_bot_username(user_tg_id: int) -> str:
-    """Bot username ni sync olish"""
     bot = BotSetUp.objects.filter(owner__telegram_id=user_tg_id, is_active=True).order_by('-created_at').first()
     return bot.bot_username if bot else "topilmadi"

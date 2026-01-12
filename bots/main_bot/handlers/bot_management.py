@@ -18,7 +18,7 @@ async def run_bot_handler(callback: CallbackQuery):
     bot_id = int(callback.data.split(":")[1])
     try:
         await callback.answer("Bot ishga tushirilmoqda...")
-        endpoint = f"{FASTAPI_URL}/api/bots/run/{bot_id}"  # To‘g‘ri URL
+        endpoint = f"{FASTAPI_URL}/api/bots/run/{bot_id}"  #
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.post(endpoint)
         if response.status_code == 200:

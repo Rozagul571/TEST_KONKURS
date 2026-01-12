@@ -18,16 +18,15 @@ class CallbackHandler:
         self.bot_id = bot_id
 
     async def handle_check_subscription(self, callback: Dict[str, Any], settings: Dict[str, Any], bot: Bot):
-        """'A’zo bo’ldim' tugmasi bosilganda kanal tekshiruvi"""
         user_id = callback['from']['id']
 
         try:
-            # Rate limit tekshiruvi
+            # Rate limit
             if await self._check_rate_limit(user_id, 'check_subscription'):
-                await bot.answer_callback_query(callback['id'], "Juda tez bosyapsiz!", show_alert=True)
+                await bot.answer_callback_query(callback['id'], "Birozdan keyin urinib koring", show_alert=True)
                 return
 
-            # Kanal tekshiruvi
+            # Chanel check
             channel_service = ChannelService(settings)
             channels_status = await channel_service.check_user_channels(user_id, bot)
 
@@ -43,7 +42,7 @@ class CallbackHandler:
             await bot.answer_callback_query(callback['id'], "Xatolik yuz berdi.", show_alert=True)
 
     async def _check_rate_limit(self, user_id: int, action: str) -> bool:
-        """Foydalanuvchi harakatini rate limit qilish"""
+        """Foydalanuvchi harakatini rate limit """
         key = CACHE_KEYS['rate_limit'].format(self.bot_id, user_id, action)
         limit_config = RATE_LIMITS.get('join_check', {'limit': 4, 'window': 15})
         return await redis_client.check_rate_limit(key, limit_config['limit'], limit_config['window'])

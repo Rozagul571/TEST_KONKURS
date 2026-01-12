@@ -60,7 +60,43 @@ class RedisClient:
             self._connected = False
             return False
 
-    # Async methods (sync wrapper)
+    # =============== QUEUE METHODS ===============
+
+    async def push_update(self, bot_id: int, update: dict) -> bool:
+        """Update ni queue ga qo'shish"""
+        if not self.is_connected():
+            return False
+        try:
+            key = f"bot_queue:{bot_id}"
+            self._client.rpush(key, json.dumps(update))
+            return True
+        except Exception as e:
+            logger.error(f"Push update error: {e}")
+            return False
+
+    async def pop_update(self, bot_id: int) -> Optional[Dict]:
+        """Queue dan update olish"""
+        if not self.is_connected():
+            return None
+        try:
+            key = f"bot_queue:{bot_id}"
+            data = self._client.lpop(key)
+            return json.loads(data) if data else None
+        except Exception as e:
+            logger.error(f"Pop update error: {e}")
+            return None
+
+    async def get_queue_length(self, bot_id: int) -> int:
+        """Queue uzunligini olish"""
+        if not self.is_connected():
+            return 0
+        try:
+            return self._client.llen(f"bot_queue:{bot_id}")
+        except:
+            return 0
+
+    # =============== SETTINGS METHODS ===============
+
     async def get_bot_settings(self, bot_id: int) -> Optional[Dict]:
         if not self.is_connected():
             return None
@@ -82,6 +118,8 @@ class RedisClient:
         except:
             return False
 
+    # =============== USER STATE METHODS ===============
+
     async def get_user_state(self, bot_id: int, user_id: int) -> Optional[Dict]:
         if not self.is_connected():
             return None
@@ -99,6 +137,18 @@ class RedisClient:
             return True
         except:
             return False
+
+    # =============== CACHE METHODS ===============
+
+    async def clear_bot_cache(self, bot_id: int):
+        """Bot cache ni tozalash"""
+        if not self.is_connected():
+            return
+        try:
+            self._client.delete(f"bot_settings:{bot_id}")
+            self._client.delete(f"bot_queue:{bot_id}")
+        except:
+            pass
 
 
 # Global instance

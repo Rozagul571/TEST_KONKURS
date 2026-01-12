@@ -221,7 +221,7 @@ class RegistrationService:
 # class RegistrationService:
 #     """Ro'yxatdan o'tkazish service"""
 #
-#     def __init__(self, bot_id: int):
+#     def __init__.py(self, bot_id: int):
 #         self.bot_id = bot_id
 #
 #     async def register_user(

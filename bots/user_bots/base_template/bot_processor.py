@@ -366,7 +366,14 @@ class BotProcessor:
     # ============ MENU HANDLERS ============
 
     async def _handle_konkurs(self, message: Dict[str, Any]):
-        """🚀 Konkursda qatnashish - Referral link va taklif posti"""
+        """
+        🚀 Konkursda qatnashish - Referral post
+
+        POST FORMATI:
+        - Admin paneldan description
+        - Referral link
+        - Share button (to'liq post bilan)
+        """
         user_id = message["from"]["id"]
 
         try:
@@ -383,33 +390,51 @@ class BotProcessor:
 
             referral_link = f"https://t.me/{bot_username}?start=ref_{participant.referral_code}"
 
-            competition_name = self.settings.get("name", "Konkurs")
+            # Admin paneldan description olish
+            description = self.settings.get("description", "")
 
-            text = f"🎉 *{competition_name}*\n\n"
-            text += "🚀 Do'stlaringizni taklif qiling va ballar yig'ing!\n\n"
-            text += "📋 *Qanday ishlaydi:*\n"
-            text += "1️⃣ Quyidagi havolani do'stlaringizga yuboring\n"
-            text += "2️⃣ Ular botga qo'shilsa, sizga ball qo'shiladi\n"
-            text += "3️⃣ Ko'p ball yig'gan g'olib bo'ladi!\n\n"
-            text += f"📎 *Sizning havolangiz:*\n`{referral_link}`\n\n"
+            # POST YARATISH - Description + Link (HTML format)
+            if description:
+                text = f"{description}\n\n"
+            else:
+                text = "🎁 Konkursda ishtirok eting va sovg'alar yutib oling!\n\n"
+
+            text += f"📎 Havola:\n{referral_link}\n\n"
             text += "👆 Havolani bosib nusxa oling va do'stlaringizga yuboring!"
 
-            share_text = f"🎉 {competition_name} da qatnashing va sovg'alar yutib oling!"
-            share_url = f"https://t.me/share/url?url={referral_link}&text={share_text}"
+            # Share uchun TO'LIQ POST (URL encode)
+            import urllib.parse
+
+            share_text = ""
+            if description:
+                share_text = f"{description}\n\n"
+            else:
+                share_text = "🎁 Konkursda ishtirok eting va sovg'alar yutib oling!\n\n"
+            share_text += f"📎 Havola:\n{referral_link}"
+
+            # URL encode - maxsus belgilarni to'g'ri encode qilish
+            encoded_text = urllib.parse.quote(share_text, safe='')
+            share_url = f"https://t.me/share/url?url={urllib.parse.quote(referral_link, safe='')}&text={encoded_text}"
 
             keyboard = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="📤 Do'stlarga ulashish", url=share_url)],
-                [InlineKeyboardButton(text="📋 Havolani nusxalash", callback_data="copy_link")]
+                [InlineKeyboardButton(text="📤 Do'stlarga ulashish", url=share_url)]
             ])
 
-            await self.bot.send_message(user_id, text, reply_markup=keyboard, parse_mode="Markdown")
+            # HTML parse_mode ishlatamiz (Markdown muammolardan qochish uchun)
+            await self.bot.send_message(user_id, text, reply_markup=keyboard)
 
         except Exception as e:
             logger.error(f"Handle konkurs error: {e}", exc_info=True)
             await self.bot.send_message(user_id, "❌ Xatolik yuz berdi. Qaytadan urinib ko'ring.")
 
     async def _handle_prizes(self, message: Dict[str, Any]):
-        """🎁 Sovg'alar"""
+        """
+        🎁 Sovg'alar
+
+        Type bo'yicha:
+        - text → description dan oladi
+        - number → prize_amount dan oladi
+        """
         user_id = message["from"]["id"]
 
         try:
@@ -421,18 +446,36 @@ class BotProcessor:
 
             text = "🎁 *KONKURS SOVG'ALARI* 🎁\n\n"
 
-            emojis = {1: "🥇", 2: "🥈", 3: "🥉", 4: "4️⃣", 5: "5️⃣"}
+            emojis = {1: "🥇", 2: "🥈", 3: "🥉", 4: "4️⃣", 5: "5️⃣", 6: "6️⃣", 7: "7️⃣", 8: "8️⃣", 9: "9️⃣", 10: "🔟"}
 
             for prize in prizes:
                 place = prize.get("place", 0)
-                emoji = emojis.get(place, f"{place}️⃣")
-                name = prize.get("prize_name", "")
+                emoji = emojis.get(place, f"{place}.")
+                prize_name = prize.get("prize_name", "")
+                prize_type = prize.get("type", "number")  # text yoki number
+                description = prize.get("description", "")
                 amount = prize.get("prize_amount")
 
-                if amount:
-                    text += f"{emoji} *{place}-o'rin:* {name} ({int(amount):,} so'm)\n\n"
+                # TYPE BO'YICHA FORMATLASH
+                if prize_type == "text":
+                    # Text type - description dan oladi
+                    if description:
+                        text += f"{emoji} *{place}-o'rin:* {description}\n\n"
+                    elif prize_name:
+                        text += f"{emoji} *{place}-o'rin:* {prize_name}\n\n"
+                    else:
+                        text += f"{emoji} *{place}-o'rin:* Sovg'a\n\n"
                 else:
-                    text += f"{emoji} *{place}-o'rin:* {name}\n\n"
+                    # Number type - amount dan oladi
+                    if amount:
+                        if prize_name:
+                            text += f"{emoji} *{place}-o'rin:* {prize_name} - {int(amount):,} so'm\n\n"
+                        else:
+                            text += f"{emoji} *{place}-o'rin:* {int(amount):,} so'm\n\n"
+                    elif prize_name:
+                        text += f"{emoji} *{place}-o'rin:* {prize_name}\n\n"
+                    else:
+                        text += f"{emoji} *{place}-o'rin:* Sovg'a\n\n"
 
             text += "🚀 G'olib bo'lish uchun do'stlaringizni taklif qiling!"
 

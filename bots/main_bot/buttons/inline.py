@@ -24,20 +24,13 @@ async def get_contact_admin_keyboard() -> InlineKeyboardMarkup:
 
 
 def get_admin_panel_keyboard(admin_url: str) -> InlineKeyboardMarkup:
-    """
-    Admin panel keyboard
-    Vazifasi: Panelga kirish tugmasi
-    """
     keyboard = InlineKeyboardBuilder()
     keyboard.button(text=BUTTON_TEXTS['admin_panel'], url=admin_url)
     return keyboard.as_markup()
 
 
 def get_bot_management_keyboard(bot_id: int) -> InlineKeyboardMarkup:
-    """
-    Bot management keyboard
-    Vazifasi: Superadmin uchun run/stop/reject
-    """
+
     keyboard = InlineKeyboardBuilder()
     keyboard.button(text=BUTTON_TEXTS['run_bot'], callback_data=f"run_bot:{bot_id}")
     keyboard.button(text=BUTTON_TEXTS['stop_bot'], callback_data=f"stop_bot:{bot_id}")
